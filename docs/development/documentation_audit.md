@@ -153,7 +153,7 @@ The following documents should be reviewed during future documentation audits:
 - `system_prompt.md`
 - `roadmap.md`
 
-Documentation audits should be be performed before each minor release.
+Documentation audits should be performed before each minor release.
 
 ---
 
