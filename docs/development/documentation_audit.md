@@ -1,6 +1,6 @@
 # 💜 Project SHION Documentation Audit
 
-Version: 1.0.0
+Version: 1.0.1
 
 Last Updated: 2026-07-20
 
@@ -28,57 +28,132 @@ The objective is to keep the documentation maintainable as the project grows.
 
 ## No Significant Duplication
 
-List sections that cover related topics but have clearly separated responsibilities.
+- `personality.md` defines SHION's internal emotional stability, likes/dislikes, and decision-making framework.
+- `speech.md` defines how those internal traits are expressed through language, phrasing, and tone.
+- `interaction.md` defines relationship behavior, spatial awareness, and interaction patterns.
 
-Example:
+The reviewed documents have clearly separated responsibilities and do not contain significant duplication.
 
-- personality.md defines SHION's personality traits.
-- speech.md defines how those traits appear in language.
+---
 
 ## Possible Duplication
 
-Record content that appears in more than one document.
+### Signature Phrases
 
-For each item, include:
+**Files involved**
 
-- Topic
-- Files involved
-- Recommended primary document
-- Recommended change
+- `character_bible.md`
+- `speech.md`
+
+**Recommended primary document**
+
+- `speech.md`
+
+**Recommended change**
+
+Keep only a few representative signature phrases in `character_bible.md` to communicate SHION's overall atmosphere.
+
+Move detailed usage rules and phrase definitions to `speech.md`.
+
+---
+
+### Core Visual Identity
+
+**Files involved**
+
+- `character_bible.md`
+- `design_principles.md`
+
+**Recommended primary document**
+
+- `design_principles.md`
+
+**Recommended change**
+
+Keep a concise visual summary in `character_bible.md`.
+
+Use `design_principles.md` as the authoritative source for immutable visual specifications.
+
+---
+
+### Behavior in Serious Situations
+
+**Files involved**
+
+- `personality.md`
+- `speech.md`
+- `interaction.md`
+
+**Recommended primary document**
+
+- `personality.md`
+
+**Recommended change**
+
+Centralize SHION's psychological baseline (remaining calm, reducing teasing while remaining herself) in `personality.md`.
+
+`speech.md` and `interaction.md` should only describe how this emotional state is expressed through language, behavior, and animation.
 
 ---
 
 # Consistency Review
 
-Record any contradictions or unclear differences.
+## Virtual Environment Definition
 
-Examples:
+`character_bible.md` establishes that SHION lives inside the user's computer and owns a minimalist virtual room.
 
-- Different descriptions of SHION's teasing style
-- Conflicting emotional boundaries
-- Inconsistent terminology
+However, `interaction.md` references actions such as sitting on the bed or walking toward the window.
+
+Clarify that these objects belong to SHION's own virtual room rather than the user's physical environment.
+
+---
+
+## Silhouette vs. Wardrobe
+
+`character_bible.md` describes SHION wearing an oversized black hoodie, while `design_principles.md` specifies a slim silhouette and elegant posture.
+
+Future artwork and Live2D models should preserve both characteristics by treating the hoodie as oversized clothing rather than changing SHION's body proportions.
 
 ---
 
 # Responsibility Review
 
-Define the primary responsibility of each reviewed file.
+Each document should have one clear responsibility.
+
+Avoid assigning the same responsibility to multiple documents.
 
 | File | Primary Responsibility |
-|---|---|
-| character_bible.md | High-level canonical character definition |
-| personality.md | Internal personality traits |
-| speech.md | Language and speaking style |
-| interaction.md | Relationship and interaction behavior |
-| design_principles.md | Immutable cross-medium design principles |
+|------|------------------------|
+| `character_bible.md` | High-level canonical character definition |
+| `personality.md` | Internal personality and emotional foundation |
+| `speech.md` | Language, tone, and speaking style |
+| `interaction.md` | User interaction and behavioral expression |
+| `design_principles.md` | Immutable cross-medium design principles |
 
 ---
 
 # Recommended Changes
 
-List only changes that are actually necessary.
+- Refine `character_bible.md` into an entry-point overview while keeping representative examples.
+- Move detailed signature phrase rules to `speech.md`.
+- Keep a concise visual overview in `character_bible.md`.
+- Use `design_principles.md` as the authoritative source for immutable visual specifications.
+- Clarify SHION's virtual living environment in `interaction.md`.
+- Consolidate SHION's psychological baseline for serious situations into `personality.md`.
+- Let related documents reference that definition instead of redefining it.
 
-Avoid rewriting documents without a clear reason.
+---
+
+# Future Audit
+
+The following documents should be reviewed during future documentation audits:
+
+- `behavior.md`
+- `memory.md`
+- `system_prompt.md`
+- `roadmap.md`
+
+Documentation audits should be be performed before each minor release.
 
 ---
 
@@ -86,4 +161,8 @@ Avoid rewriting documents without a clear reason.
 
 Project SHION documentation should remain modular.
 
-Related information may appear across multiple documents, but detailed definitions should have one clear source of truth.
+Every concept should have one authoritative source, while related documents reference that source instead of duplicating it.
+
+This approach keeps SHION consistent as the project evolves.
+
+A well-maintained documentation structure is essential to preserving SHION's identity across future implementations.
