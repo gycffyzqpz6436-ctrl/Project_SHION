@@ -1,0 +1,500 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-shion:schema:dataset:1.0.0",
+  "title": "Project SHION Conversation Scenario Record",
+  "description": "Schema for one revision of one complete Project SHION conversation scenario.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "revision",
+    "status",
+    "category",
+    "tags",
+    "scenario",
+    "messages",
+    "quality",
+    "review",
+    "lineage",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^shion_[0-9]{6}$"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "candidate",
+        "needs_revision",
+        "golden",
+        "rejected",
+        "evaluation_candidate",
+        "held_out_review",
+        "evaluation"
+      ]
+    },
+    "category": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "uniqueItems": true
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "seriousness",
+        "memory_state",
+        "address_preference",
+        "response_length"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seriousness": {
+          "type": "string",
+          "enum": [
+            "ordinary",
+            "mild_stress",
+            "serious",
+            "safety_sensitive"
+          ]
+        },
+        "memory_state": {
+          "type": "string",
+          "enum": [
+            "not_applicable",
+            "explicitly_provided",
+            "unavailable",
+            "uncertain"
+          ]
+        },
+        "address_preference": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "response_length": {
+          "type": "string",
+          "enum": [
+            "short",
+            "medium",
+            "long"
+          ]
+        }
+      }
+    },
+    "messages": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "$ref": "#/$defs/message"
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "character_consistency",
+        "naturalness",
+        "context_awareness",
+        "emotional_awareness",
+        "helpfulness",
+        "safety"
+      ],
+      "properties": {
+        "character_consistency": {
+          "$ref": "#/$defs/nullableScore"
+        },
+        "naturalness": {
+          "$ref": "#/$defs/nullableScore"
+        },
+        "context_awareness": {
+          "$ref": "#/$defs/nullableScore"
+        },
+        "emotional_awareness": {
+          "$ref": "#/$defs/nullableScore"
+        },
+        "helpfulness": {
+          "$ref": "#/$defs/nullableScore"
+        },
+        "safety": {
+          "enum": [
+            "pass",
+            "fail",
+            null
+          ]
+        },
+        "auxiliary": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "warmth": {
+              "$ref": "#/$defs/nullableScore"
+            },
+            "playfulness": {
+              "$ref": "#/$defs/nullableScore"
+            },
+            "intelligence": {
+              "$ref": "#/$defs/nullableScore"
+            },
+            "conciseness": {
+              "$ref": "#/$defs/nullableScore"
+            },
+            "relationship_continuity": {
+              "$ref": "#/$defs/nullableScore"
+            }
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "result",
+        "reviewer",
+        "reviewed_at",
+        "rejection_reasons",
+        "notes",
+        "owner_approved"
+      ],
+      "properties": {
+        "result": {
+          "enum": [
+            "pass",
+            "needs_revision",
+            "reject",
+            null
+          ]
+        },
+        "reviewer": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "reviewed_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rejection_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "out_of_character",
+              "too_generic",
+              "tone_imbalance",
+              "nono_style_leak",
+              "teasing_mismatch",
+              "unnatural_address",
+              "relationship_overreach",
+              "unnatural_flow",
+              "length_mismatch",
+              "repetitive_expression",
+              "context_miss",
+              "emotion_misread",
+              "unhelpful",
+              "memory_hallucination",
+              "capability_overclaim",
+              "factually_unreliable",
+              "unsafe",
+              "privacy_boundary_issue",
+              "duplicate",
+              "category_mismatch",
+              "format_error",
+              "schema_error",
+              "metadata_missing"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "notes": {
+          "type": "string"
+        },
+        "owner_approved": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parent_revision",
+        "edited_by_human",
+        "change_summary"
+      ],
+      "properties": {
+        "parent_revision": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "edited_by_human": {
+          "type": "boolean"
+        },
+        "change_summary": {
+          "type": "string"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "created_at",
+        "source_batch",
+        "dataset_version",
+        "generator"
+      ],
+      "properties": {
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source_batch": {
+          "type": "string",
+          "pattern": "^batch_[0-9]{4}$"
+        },
+        "dataset_version": {
+          "type": "string",
+          "const": "0.1.0"
+        },
+        "generator": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "content"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "user",
+            "assistant"
+          ]
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "nullableScore": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "maximum": 5
+    }
+  },
+  "allOf": [
+    {
+      "properties": {
+        "messages": {
+          "prefixItems": [
+            {
+              "properties": {
+                "role": {
+                  "const": "user"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "golden"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "quality": {
+            "properties": {
+              "character_consistency": {
+                "type": "integer",
+                "minimum": 4,
+                "maximum": 5
+              },
+              "naturalness": {
+                "type": "integer",
+                "minimum": 4,
+                "maximum": 5
+              },
+              "context_awareness": {
+                "type": "integer",
+                "minimum": 4,
+                "maximum": 5
+              },
+              "emotional_awareness": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "helpfulness": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "safety": {
+                "const": "pass"
+              }
+            }
+          },
+          "review": {
+            "properties": {
+              "result": {
+                "const": "pass"
+              },
+              "reviewer": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reviewed_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "rejection_reasons": {
+                "maxItems": 0
+              },
+              "owner_approved": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "revision": {
+            "minimum": 2
+          }
+        },
+        "required": [
+          "revision"
+        ]
+      },
+      "then": {
+        "properties": {
+          "lineage": {
+            "properties": {
+              "parent_revision": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "rejected"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "review": {
+            "properties": {
+              "result": {
+                "const": "reject"
+              },
+              "rejection_reasons": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "not": {
+        "properties": {
+          "messages": {
+            "contains": {
+              "properties": {
+                "role": {
+                  "const": "assistant"
+                }
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "maxContains": 0
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false,
+  "$comment": "The final message must be assistant and roles must alternate. JSON Schema 2020-12 cannot directly constrain the last item of a variable-length array; an operational validator must enforce these two rules separately."
+}
