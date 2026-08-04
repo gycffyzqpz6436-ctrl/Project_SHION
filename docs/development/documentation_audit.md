@@ -1,6 +1,6 @@
 # Project SHION Documentation Audit
 
-Version: 2.0.0
+Version: 2.1.0
 
 Last Updated: 2026-08-04
 
@@ -19,7 +19,7 @@ This audit records the current documentation structure of Project SHION and iden
 - intentional or acceptable duplication
 - design decisions that remain open before implementation
 
-This audit does not resolve character, visual, speech, relationship, implementation, or branding decisions. It records confirmed facts separately from inferred responsibilities and recommendations.
+This audit records confirmed facts separately from inferred responsibilities and recommendations. Where the project owner has accepted a formal Decision Record, this audit reports that decision as resolved responsibility without treating pending body updates or implementation work as complete.
 
 ### Confirmed Facts
 
@@ -119,28 +119,28 @@ This inference is based on the presence of broad specification documents and the
 
 ## 3. Canonical Source Map
 
-The table below separates confirmed declarations from inferred responsibilities. An inferred responsibility is not a final source-of-truth decision.
+The table below distinguishes accepted responsibilities from responsibilities inferred only from current document content.
 
 | Document | Responsibility | Status |
 |---|---|---|
-| `README.md` | Repository entry point, vision, and high-level status | Confirmed by content |
-| `docs/character/character_bible.md` | High-level character overview and navigation entry point | Inferred; the previous audit also recommended this role |
-| `docs/character/personality.md` | Internal personality, emotional baseline, values, likes, dislikes, and serious-situation baseline | Confirmed by document purpose |
-| `docs/character/speech.md` | Language, tone, signature expressions, sentence endings, teasing boundaries, and verbal expression | Confirmed by document purpose |
-| `docs/character/interaction.md` | Visible interaction patterns, presence, activity-specific behavior, and spatial behavior | Confirmed by document purpose |
-| `docs/character/appearance.md` | Detailed physical appearance, clothing, accessories, palette, and silhouette | Confirmed by document purpose |
-| `docs/character/design_principles.md` | Cross-medium identity and design principles | Confirmed by document purpose; authority level is disputed |
-| `docs/character/official_design_guide.md` | Official visual identity and immutable visual elements | Confirmed by document purpose; authority level is disputed |
+| `README.md` | Project overview, short progress summary, major next phases, and future roadmap entry point | Accepted by DD-013; body alignment pending |
+| `docs/character/character_bible.md` | High-level character overview and documentation index | Accepted by DD-008; body alignment pending |
+| `docs/character/personality.md` | Internal personality, values, and emotional foundations | Accepted by DD-008 and DD-010 |
+| `docs/character/speech.md` | Speaking style, vocabulary, forms of address, prohibitions, and language expression | Accepted by DD-008 and DD-010; body alignment pending |
+| `docs/character/interaction.md` | User distance and situational, relational, visible, and spatial behavior | Accepted by DD-008 and DD-010; body alignment pending |
+| `docs/character/appearance.md` | Concrete physical and visual appearance specifications | Accepted by DD-009; body alignment pending |
+| `docs/character/design_principles.md` | Immutable cross-medium principles and design-change criteria | Accepted by DD-009; body alignment pending |
+| `docs/character/official_design_guide.md` | Application and operational guidance for production materials | Accepted by DD-009; body alignment pending |
 | `docs/character/expressions.md` | Character-facing facial-expression definitions and usage | Confirmed by document purpose |
 | `docs/character/room.md` | SHION's virtual room and environmental design | Confirmed by document purpose |
 | `docs/character/brand_philosophy.md` | Project vision, brand values, and long-term creative direction | Confirmed by document purpose |
 | `docs/character/brand_assets.md` | Requirements and usage guidance for future branding assets | Confirmed by document purpose; it does not contain the assets themselves |
-| `docs/ai/behavior.md` | Behavioral priorities, initiative, feedback handling, mistakes, and decision checks | Confirmed by document purpose; authority relative to `system_prompt.md` is disputed |
-| `docs/ai/conversation_examples.md` | Representative conversation examples | Confirmed by document purpose; Golden Example status is not established |
+| `docs/ai/behavior.md` | Decision policy and behavioral priorities | Accepted by DD-010; body alignment pending |
+| `docs/ai/conversation_examples.md` | Explanatory conversation reference | Accepted by DD-012; non-Golden status must be stated in the body |
 | `docs/ai/memory.md` | Memory philosophy, categories, retention, and forgetting | Confirmed by document purpose |
 | `docs/ai/prompt_design.md` | Modular prompt-layer design and composition | Confirmed by document purpose |
 | `docs/ai/system_flow.md` | Conceptual interaction-processing pipeline | Confirmed by document purpose |
-| `docs/ai/system_prompt.md` | Proposed core system prompt for Local AI implementations | Confirmed by document purpose; final runtime authority is not established |
+| `docs/ai/system_prompt.md` | Derived implementation artifact compiled from canonical source documents | Accepted by DD-010; body alignment pending |
 | `docs/live2d/model_specification.md` | Live2D source-art and model preparation guidance | Confirmed by document purpose |
 | `docs/live2d/motion_specification.md` | Live2D motion set and transition behavior | Confirmed by document purpose |
 | `docs/live2d/expression_mapping.md` | Intended bridge from character expressions to Live2D expression behavior | Confirmed by purpose; concrete parameter mapping is incomplete |
@@ -149,18 +149,21 @@ The table below separates confirmed declarations from inferred responsibilities.
 | `docs/development/contribution_guide.md` | Contribution, commit, documentation, and review expectations | Confirmed by document purpose |
 | `docs/development/design_decisions.md` | Record of major project decisions and their rationale | Confirmed by document purpose |
 | `docs/development/documentation_audit.md` | Documentation inventory, conflicts, open decisions, and recommended resolution order | Confirmed by document purpose |
-| `docs/development/versioning.md` | Proposed versioning policy and milestone sequence | Confirmed by document purpose |
+| `docs/development/versioning.md` | Version-number rules, release criteria, tags, and change-history relationship | Accepted by DD-013; body alignment pending |
 
-### Canonical Status That Is Not Yet Decided
+### Accepted Canonical Responsibility Decisions
 
-The audit does not select a final canonical source for:
+The following responsibility boundaries were accepted on 2026-08-04:
 
-- immutable visual specifications
-- AI behavior and runtime instruction precedence
-- project progress and roadmap status
-- the normative status of conversation examples
+- DD-007 defines naming and identity usage.
+- DD-008 defines the Character Bible and specialist character-document responsibilities.
+- DD-009 defines the separate responsibilities of `appearance.md`, `design_principles.md`, and `official_design_guide.md`.
+- DD-010 defines AI specification authority and treats `system_prompt.md` as a derived implementation artifact.
+- DD-011 defines `お兄さん` as a configurable default form of address.
+- DD-012 defines `conversation_examples.md` as an explanatory reference rather than a Golden Dataset or automated evaluation set.
+- DD-013 defines progress, versioning, and future roadmap ownership.
 
-These conflicts are described below.
+These decisions resolve responsibility ownership. They do not by themselves revise overlapping document bodies, repair references, create `roadmap.md`, or complete implementation specifications. Those tasks remain as implementation and documentation work.
 
 ---
 
@@ -186,13 +189,13 @@ After confirming the intended target, replace the reference with explicit links 
 
 The previous version of this audit listed `roadmap.md` as a future audit target, but no `roadmap.md` exists.
 
-**Impact**
+**Accepted responsibility**
 
-The reference implies that a dedicated roadmap is already part of the documentation set. Progress information remains distributed across other documents.
+DD-013 assigns detailed phases, milestones, status, dependencies, and implementation order to a future `roadmap.md`.
 
-**Recommended direction**
+**Remaining implementation work**
 
-Decide whether roadmap authority should remain in an existing document or move to a future dedicated document. Do not create the file as part of this audit.
+The file does not yet exist. Existing documents must not link to it or imply that it is available until a separately approved change creates it.
 
 ### BR-003 — Missing `CHANGELOG.md`
 
@@ -252,131 +255,84 @@ Treat these elements as planned assets until approved files and usage metadata e
 
 ---
 
-## 5. Source-of-Truth Conflicts
+## 5. Source-of-Truth Conflict Status
 
 ### ST-001 — Visual specification authority
 
-**Documents**
+**Previous audit finding**
 
-- `docs/character/appearance.md`
-- `docs/character/design_principles.md`
-- `docs/character/official_design_guide.md`
+`appearance.md`, `design_principles.md`, and `official_design_guide.md` claimed overlapping visual authority.
 
-**Confirmed facts**
+**Accepted decision**
 
-- `appearance.md` states that every visual representation should follow it.
-- `design_principles.md` defines core principles intended to remain consistent across media.
-- `official_design_guide.md` states that it defines the official visual identity and that every visual implementation should follow it.
-- The previous audit recommended `design_principles.md` as the authoritative source for immutable visual specifications.
-- `official_design_guide.md` was added after the original audit scope was established.
+Resolved by DD-009:
 
-**Conflict**
+- `appearance.md` owns concrete appearance specifications.
+- `design_principles.md` owns immutable cross-medium principles and design-change criteria.
+- `official_design_guide.md` owns application and operational guidance for production materials.
 
-Three documents claim overlapping authority over immutable or universal visual identity. The previous audit's conclusion is no longer sufficient because it did not evaluate the later official design guide.
+**Remaining implementation work**
 
-**Impact**
-
-Illustration, Live2D, 3D, image-generation, and branding work may select different sources when details diverge.
-
-**Recommended direction**
-
-The project owner should assign non-overlapping authority, for example:
-
-- physical detail and wardrobe specification
-- immutable cross-medium identity
-- official usage and brand presentation
-
-This example is a proposed responsibility split, not a decision. No one document is selected by this audit.
+The three document bodies still contain overlapping authority statements and duplicated content. They must be aligned with DD-009 without changing unresolved clothing details or other visual specifications.
 
 ### ST-002 — Personality, behavior, interaction, and runtime instruction authority
 
-**Documents**
+**Previous audit finding**
 
-- `docs/character/personality.md`
-- `docs/character/speech.md`
-- `docs/character/interaction.md`
-- `docs/ai/behavior.md`
-- `docs/ai/system_prompt.md`
+The boundary among character truth, behavioral policy, verbal expression, visible interaction, and executable runtime instruction was unclear.
 
-**Confirmed facts**
+**Accepted decision**
 
-- `personality.md` defines internal traits and emotional stability.
-- `speech.md` defines verbal expression and conversation rules.
-- `interaction.md` defines visible and situational interaction behavior.
-- `behavior.md` defines behavioral priorities, initiative, feedback, and decision checks.
-- `system_prompt.md` calls itself the primary behavioral specification for Local AI implementations.
+Resolved by DD-008 and DD-010:
 
-**Conflict**
+1. `personality.md` owns internal personality and emotional foundations.
+2. `behavior.md` owns decision policy and behavioral priorities.
+3. `speech.md` owns language expression.
+4. `interaction.md` owns situational, relational, visible, and spatial behavior.
+5. `system_prompt.md` is a derived implementation artifact.
 
-The documents are mostly directionally consistent, but the boundary between character truth, behavioral policy, and executable runtime instruction is not explicit. `behavior.md` and `system_prompt.md` both make broad behavioral claims.
+Canonical source documents take priority when they conflict with `system_prompt.md`.
 
-**Impact**
+**Remaining implementation work**
 
-Future prompt assembly may duplicate rules, produce unclear precedence, or allow runtime instructions to drift from the character specifications.
-
-**Recommended direction**
-
-Define a precedence model before Local AI implementation. A possible model would distinguish:
-
-- character facts
-- behavioral policy
-- language realization
-- interaction presentation
-- compiled runtime prompt
-
-This model is a proposal only. The audit does not choose the final AI behavior authority.
+The source documents and `system_prompt.md` have not yet been revised to state these boundaries consistently. Existing duplicated behavioral guidance must be reviewed without changing the accepted character behavior.
 
 ### ST-003 — Progress, future goals, and milestone authority
 
-**Documents**
+**Previous audit finding**
 
-- `README.md`
-- `docs/character/character_bible.md`
-- `docs/development/versioning.md`
+Progress and milestone information was distributed across `README.md`, `character_bible.md`, and `versioning.md`.
 
-**Confirmed facts**
+**Accepted decision**
 
-- `README.md` contains a completion checklist.
-- `character_bible.md` contains a separate Future Goals checklist.
-- `versioning.md` defines planned milestones.
-- The checklists and milestones use different levels of detail.
+Resolved by DD-013:
 
-**Conflict**
+- `README.md` owns the project overview and short progress summary.
+- `versioning.md` owns version and release policy.
+- A future `roadmap.md` will own detailed phases, milestones, status, dependencies, and implementation order.
 
-No document is declared as the authoritative current project status. Static character documentation contains mutable project-progress information.
+**Remaining implementation work**
 
-**Impact**
-
-Progress can become stale or contradictory when only one checklist is updated.
-
-**Recommended direction**
-
-Choose one status authority and make the other documents link to it or provide explicitly non-authoritative summaries. The audit does not decide whether that authority should be the README, a future roadmap, or another project-management source.
+The existing progress sections have not yet been reconciled. `roadmap.md` does not yet exist and is not created by this audit update. References must not imply that it already exists.
 
 ### ST-004 — Status of conversation examples
 
-**Documents**
+**Previous audit finding**
 
-- `docs/ai/conversation_examples.md`
-- `docs/character/speech.md`
-- `docs/character/personality.md`
-- `docs/ai/system_prompt.md`
+The normative weight of `conversation_examples.md` was undefined.
 
-**Confirmed fact**
+**Accepted decision**
 
-`conversation_examples.md` describes its examples as representative references and says that examples are especially important. It does not declare them to be Golden Examples, tests, or higher-priority rules.
+Resolved by DD-012. The current file is an explanatory reference and is not:
 
-**Conflict**
+- an absolute rule
+- a Golden Dataset
+- an automated evaluation set
+- the canonical training-data source
 
-The normative weight of examples relative to written rules is not defined.
+**Remaining implementation work**
 
-**Impact**
-
-Model evaluation and prompt design cannot consistently determine whether an example should override, illustrate, or be revised to match a rule.
-
-**Recommended direction**
-
-Define whether examples are illustrative, normative, evaluative, or versioned test fixtures. Do not assign Golden Example status without an explicit project decision.
+The file body should state this status explicitly. A future versioned Golden Dataset or evaluation set remains separate future work.
 
 ---
 
@@ -533,38 +489,45 @@ Record stack decisions separately when they are made. Until then, label the arch
 
 ### NT-001 — `Project SHION` and `Project_SHION`
 
-**Confirmed facts**
+**Previous audit finding**
 
-- The repository name is `Project_SHION`.
-- Documentation primarily uses `Project SHION`.
-- Both forms appear meaningful in different contexts, but no usage rule is documented.
+No usage rule distinguished the two forms.
 
-**Open decision**
+**Accepted decision**
 
-Decide whether `Project SHION` is the display or brand name and `Project_SHION` is only a repository or technical identifier. This audit does not establish that rule.
+DD-007 defines `Project SHION` as the human-facing display and brand name and `Project_SHION` as the repository name, directory name, and technical identifier.
+
+**Remaining implementation work**
+
+Existing human-facing documents and technical identifiers must be checked for compliance with DD-007.
 
 ### NT-002 — `SHION` and `紫苑`
 
-**Confirmed fact**
+**Previous audit finding**
 
-The audited documentation uses `SHION` as the character name. It does not define `紫苑` as an official Japanese name, display name, alias, or localization.
+The official status of `紫苑` was undefined.
 
-**Open decision**
+**Accepted decision**
 
-Decide whether `紫苑` is an official Japanese form and, if so, where each form should be used.
+DD-007 defines `SHION` as the primary English name and `紫苑` as the official Japanese name. Both refer to the same character.
+
+**Remaining implementation work**
+
+Japanese-facing documents and interfaces must apply the accepted usage consistently when they are revised.
 
 ### NT-003 — User relationship and the term `お兄さん`
 
-**Confirmed facts**
+**Previous audit finding**
 
-- `personality.md` and `system_prompt.md` describe the user as a development partner or long-term partner.
-- `speech.md` lists `お兄さんさぁ〜♪` as a signature expression.
-- `conversation_examples.md` repeatedly addresses the user as `お兄さん`.
-- No document states whether `お兄さん` is fixed, user-specific, optional, configurable, or context-dependent.
+The documents used `お兄さん` without defining whether it was fixed or configurable.
 
-**Open decision**
+**Accepted decision**
 
-Define the status and boundaries of `お兄さん` without changing the relationship or speech style during this audit.
+DD-011 defines `お兄さん` as a configurable default form of address. It should not appear in every sentence, its frequency should decrease in serious or emergency contexts, and an explicit user preference takes priority.
+
+**Remaining implementation work**
+
+The rule must be reflected in `speech.md`, relevant interaction or AI guidance, user-preference handling, and future prompt implementations.
 
 ### NT-004 — Live2D clothing terminology
 
@@ -616,7 +579,7 @@ This is acceptable when each document limits itself to its own layer:
 - runtime prompt representation
 - illustrative example
 
-The responsibility split is inferred and still requires confirmation.
+The responsibility split is accepted by DD-008 and DD-010. The duplicated document bodies still require alignment and reference cleanup.
 
 ### Subtle emotional expression
 
@@ -638,31 +601,50 @@ This is necessary for implementation context, but detailed values should ultimat
 
 ---
 
-## 9. Open Design Decisions
+## 9. Decision Status and Remaining Open Work
 
-The following items are unresolved. This audit intentionally does not decide them.
+### Accepted Decisions
 
-| ID | Open decision | Affected documents |
+The following previous open-decision records are resolved at the responsibility level:
+
+| Previous audit IDs | Accepted decision | Resolved responsibility |
 |---|---|---|
-| OD-001 | Which document is authoritative for immutable visual specifications? | `appearance.md`, `design_principles.md`, `official_design_guide.md` |
-| OD-002 | How should physical detail, cross-medium principles, and official brand presentation be divided? | Same as OD-001, plus `brand_assets.md` |
-| OD-003 | Which source defines AI behavioral truth, and how is runtime precedence compiled? | `personality.md`, `speech.md`, `interaction.md`, `behavior.md`, `system_prompt.md`, `prompt_design.md` |
-| OD-004 | Are conversation examples illustrative, normative, evaluative, or Golden Examples? | `conversation_examples.md` and all conversation specifications |
-| OD-005 | Which source is authoritative for current progress and future milestones? | `README.md`, `character_bible.md`, `versioning.md` |
-| OD-006 | Should a dedicated roadmap exist, or should an existing document own roadmap status? | `README.md`, `versioning.md`, missing `roadmap.md` |
-| OD-007 | Should a changelog be created before the first formal release, or should the policy change? | `versioning.md`, missing `CHANGELOG.md` |
-| OD-008 | Is `Project SHION` the display name and `Project_SHION` only a technical identifier? | Repository-wide |
-| OD-009 | Is `紫苑` an official Japanese name, alias, or localization? | Repository-wide |
-| OD-010 | Is `お兄さん` fixed, configurable, user-specific, optional, or context-dependent? | `speech.md`, `conversation_examples.md`, relationship specifications |
-| OD-011 | Does `Jacket` mean the approved hoodie, and is `Belt` part of an approved outfit? | `appearance.md`, `model_specification.md` |
-| OD-012 | Which expressions are required for the first Live2D implementation? | `expressions.md`, `expression_mapping.md`, `model_specification.md` |
-| OD-013 | How is SHION's virtual room presented relative to the user's physical workspace? | `character_bible.md`, `room.md`, `interaction.md`, Live2D documents |
-| OD-014 | Are official logo, signature, and icon concepts, requirements, or approved assets? | `brand_assets.md`, `official_design_guide.md` |
-| OD-015 | How are document versions separated from project release versions? | All versioned documents, `versioning.md` |
-| OD-016 | What evidence or artifact supports completed Pose References and visual references? | `README.md`, character and Live2D documentation |
-| OD-017 | Which implementation stack and platform constraints are approved? | `architecture.md`, `coding_standards.md` |
-| OD-018 | What are the voice identity and synthesis requirements? | README roadmap; no dedicated voice document |
-| OD-019 | What are the desktop assistant's UI, permissions, privacy, and safety boundaries? | `architecture.md`, `interaction.md` |
+| OD-008, OD-009 | DD-007 | Human-facing, technical, English, and Japanese naming |
+| Part of OD-003 and OD-005 | DD-008 | Character Bible and specialist character-document ownership |
+| OD-001, OD-002 | DD-009 | Concrete appearance, cross-medium principles, and production-guidance ownership |
+| OD-003 | DD-010 | AI specification authority and derived `system_prompt.md` status |
+| OD-010 | DD-011 | Configurable default use of `お兄さん` |
+| OD-004 | DD-012 | Explanatory status of `conversation_examples.md` |
+| OD-005, OD-006 | DD-013 | README, versioning, and future roadmap ownership |
+
+These records remain in the audit history so the transition from open issue to accepted decision is traceable.
+
+### Resolved Responsibilities with Pending Body Updates
+
+- `character_bible.md` has an accepted overview-and-index role, but duplicated detailed content remains.
+- The visual documents have accepted separate roles, but their authority statements and duplicated content remain unaligned.
+- The AI documents have accepted precedence, but their bodies do not yet state it consistently.
+- `speech.md` and related implementation guidance do not yet contain the full accepted configurable-address rule.
+- `conversation_examples.md` does not yet state that it is explanatory and non-Golden.
+- README and versioning responsibilities are accepted, but existing progress and milestone text remains distributed.
+- Naming rules are accepted, but repository-wide usage has not yet been normalized.
+
+### Remaining Open Decisions and Implementation Prerequisites
+
+| ID | Remaining issue | Affected documents or systems |
+|---|---|---|
+| OD-007 | Whether and when to create `CHANGELOG.md` while satisfying the accepted versioning responsibility | `versioning.md`, missing `CHANGELOG.md` |
+| OD-011 | Whether `Jacket` means the approved hoodie and whether `Belt` is approved | `appearance.md`, `model_specification.md` |
+| OD-012 | Initial Live2D expression inventory, missing mappings, parameter IDs, and value ranges | `expressions.md`, `expression_mapping.md`, `model_specification.md` |
+| OD-013 | Presentation of SHION's virtual room relative to the user's physical workspace | `character_bible.md`, `room.md`, `interaction.md`, Live2D documents |
+| OD-014 | Approval status of the official logo, signature, and icon | `brand_assets.md`, `official_design_guide.md` |
+| OD-015 | Operational relationship between document versions and project release versions | Versioned documents, `versioning.md` |
+| OD-016 | Missing concrete Pose References and visual-reference artifacts | `README.md`, character and Live2D documentation |
+| OD-017 | Approved implementation stack and platform constraints | `architecture.md`, `coding_standards.md` |
+| OD-018 | Voice identity and synthesis requirements | README roadmap; no dedicated voice document |
+| OD-019 | Desktop-assistant permissions, privacy, and safety boundaries | `architecture.md`, `interaction.md` |
+| RW-001 | Broken and ambiguous references listed in Section 4 | Multiple documents |
+| RW-002 | Body-level duplication and stale authority statements | Character, AI, Live2D, and development documents |
 
 ---
 
@@ -670,24 +652,25 @@ The following items are unresolved. This audit intentionally does not decide the
 
 These are recommendations, not project decisions.
 
-### 1. Confirm documentation authority and terminology
+### 1. Apply accepted decisions to document bodies
 
-Resolve:
+Update the affected documents to state the DD-007 through DD-013 responsibilities without changing unresolved character or implementation specifications.
 
-- visual source-of-truth responsibilities
-- AI behavior and prompt precedence
-- progress and roadmap authority
-- `Project SHION` / `Project_SHION`
-- `SHION` / `紫苑`
-- the status of `お兄さん`
+Priority examples:
+
+- make `character_bible.md` an overview and index
+- state canonical precedence and derived status in `system_prompt.md`
+- align authority statements in the three visual documents
+- state address rules in `speech.md`
+- state explanatory, non-Golden status in `conversation_examples.md`
 
 Reason:
 
-These decisions affect many later edits and reduce the risk of fixing links toward the wrong canonical source.
+The authority decisions are complete, but the existing bodies still communicate older or ambiguous responsibility claims.
 
 ### 2. Repair confirmed references without changing specifications
 
-After authority is confirmed:
+After the accepted responsibility boundaries are reflected:
 
 - replace the missing `live2d.md` reference
 - make the Live2D `expressions.md` target explicit
@@ -711,13 +694,9 @@ Reason:
 
 These items directly affect source-art preparation, rigging, animation, desktop UI, and AI-to-Live2D control.
 
-### 4. Separate project status from stable character specifications
+### 4. Apply accepted progress ownership
 
-Choose one progress authority and remove or clearly label duplicate mutable checklists.
-
-Reason:
-
-Character identity documents should not silently become stale when implementation progress changes.
+Keep a short progress summary in README, keep version and release policy in `versioning.md`, and defer detailed phases and dependencies to the future `roadmap.md`. Do not create or link to the roadmap as though it already exists.
 
 ### 5. Record implementation decisions before coding
 
@@ -743,33 +722,35 @@ The current architecture is conceptual and should not be mistaken for a selected
 - Project SHION has 27 Markdown documents in the audited scope.
 - The documentation provides a broad and mostly consistent character and system direction.
 - Several references are missing or ambiguous.
-- Visual authority, AI behavioral authority, and progress authority are distributed across competing documents.
+- DD-007 through DD-013 resolve naming, documentation responsibility, visual responsibility, AI authority, default address, conversation-example status, and roadmap ownership.
+- The corresponding document bodies have not yet been fully aligned with those accepted decisions.
 - Live2D expression and clothing specifications are not fully aligned with character specifications.
 - Several planned assets and process documents are referenced but do not exist.
 - The repository contains documentation but no implementation or production asset files.
 
-### Inferred Responsibilities
+### Resolved Responsibilities
 
-Most documents have a recognizable intended responsibility, but several authority boundaries remain inferred rather than explicitly approved.
+The responsibility boundaries recorded by DD-007 through DD-013 are accepted rather than inferred. Section 9 maps the previous open-decision IDs to their accepted records.
 
-### Conflicts
+### Remaining Conflicts and Implementation Work
 
-The highest-impact conflicts are:
+The highest-impact remaining work is:
 
-1. competing visual source-of-truth claims
-2. unclear precedence among personality, behavior, speech, interaction, and system prompt documents
-3. distributed progress and milestone tracking
-4. mismatched expression inventories
-5. unresolved Live2D clothing terminology
+1. align document bodies with the accepted authority decisions
+2. repair broken and ambiguous references
+3. reconcile Live2D expression inventories and parameter mappings
+4. resolve Live2D clothing terminology
+5. define the virtual-room presentation model
+6. establish asset approval status, technology stack, voice requirements, and desktop safety boundaries
 
 ### Open Decisions
 
-Open decisions are recorded in Section 9. None are resolved by this audit.
+Remaining open decisions and prerequisites are recorded in Section 9. Accepted authority decisions are tracked separately from unresolved implementation details.
 
 ### Recommended Next Actions
 
-1. Approve a canonical responsibility map without changing character content.
-2. Repair confirmed references in a separate, narrowly scoped documentation change.
-3. Reconcile Live2D expression and clothing inventories before asset production or rigging.
+1. Reflect DD-008 in `character_bible.md` and repair its broken Live2D reference.
+2. Reflect DD-010 in `system_prompt.md` and related AI-document responsibility statements.
+3. Reflect DD-009 in the three visual documents before resolving clothing or asset details.
 
-This audit should be repeated after authority decisions are recorded and before the first implementation milestone or minor release.
+This audit should be repeated after the accepted decisions are reflected in the affected document bodies and before the first implementation milestone or minor release.
