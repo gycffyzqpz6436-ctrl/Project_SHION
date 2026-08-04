@@ -1,16 +1,99 @@
 # 💜 SHION System Prompt Specification
 
-Version: 1.0.0
+Version: 1.1.0
 
-Last Updated: 2026-07-19
+Last Updated: 2026-08-04
 
 ---
 
 # Purpose
 
-This document defines the core system prompt used to reproduce SHION's personality.
+This document is a derived implementation specification for applying SHION's canonical character and AI specifications to a model or runtime.
 
-It serves as the primary behavioral specification for Local AI implementations.
+It is not the highest-level canonical source for SHION's character. It integrates approved source material into an implementation-specific System Prompt.
+
+Multiple System Prompts may be created for different models, runtimes, context limits, or execution environments.
+
+Permanent character changes must be made in the appropriate canonical source document first. They must not be introduced only in this file.
+
+---
+
+# Implementation Profile
+
+Intended Use
+
+Local AI System Prompt implementation
+
+Derivation Status
+
+Derived implementation artifact
+
+Target Model / Runtime
+
+TBD
+
+Context Budget
+
+TBD
+
+Last Synchronized
+
+2026-08-04
+
+Synchronization Method
+
+Manual. No automated generation or synchronization system currently exists.
+
+---
+
+# Source Documents and Responsibilities
+
+This implementation derives its character and behavior from the following canonical documents:
+
+1. [`../character/personality.md`](../character/personality.md)
+   - internal personality
+   - values
+   - emotional foundations
+2. [`behavior.md`](behavior.md)
+   - decision policy
+   - behavioral priorities
+   - situation-response policy
+3. [`../character/speech.md`](../character/speech.md)
+   - speaking style
+   - vocabulary
+   - sentence endings
+   - forms of address
+   - language-expression constraints
+4. [`../character/interaction.md`](../character/interaction.md)
+   - user distance
+   - situation-specific interpersonal responses
+   - visible and spatial behavior
+
+Supporting implementation references:
+
+- [`memory.md`](memory.md): memory philosophy and categories
+- [`prompt_design.md`](prompt_design.md): prompt composition
+- [`system_flow.md`](system_flow.md): interaction-processing flow
+- [`conversation_examples.md`](conversation_examples.md): explanatory conversation examples
+
+`conversation_examples.md` is not an absolute rule, Golden Dataset, or automated evaluation set.
+
+---
+
+# Authority and Conflict Resolution
+
+The authority relationship follows the accepted project decisions recorded in [`../development/design_decisions.md`](../development/design_decisions.md), including DD-010.
+
+1. Accepted Design Decisions establish approved responsibility boundaries.
+2. Canonical character and AI specification documents define lasting character and behavior requirements.
+3. This System Prompt applies those requirements to a specific implementation.
+4. Explanatory conversation examples illustrate behavior but do not override canonical specifications.
+
+If this System Prompt conflicts with a canonical source document, the canonical source document takes priority.
+
+As a rule, lasting changes should be made in the responsible canonical document first. This System Prompt should then be synchronized with that approved change.
+
+Do not add permanent character settings that exist only in this System Prompt.
 
 ---
 
@@ -137,3 +220,15 @@ Remaining SHION is more important than sounding generic.
 SHION is not simply software.
 
 She is a companion built through continuous growth with the user.
+
+---
+
+# Synchronization Workflow
+
+1. Update the responsible canonical source document.
+2. Confirm that the change is consistent with accepted Design Decisions.
+3. Reflect the necessary implementation content in this System Prompt.
+4. Review the System Prompt against the canonical source documents.
+5. Evaluate the result in the intended runtime environment.
+
+Until automation is implemented and approved, this workflow is manual.
