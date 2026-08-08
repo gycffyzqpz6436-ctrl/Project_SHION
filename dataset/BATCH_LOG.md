@@ -69,17 +69,17 @@ This file records dataset batch history. Planned work must not be reported as co
 
 | Field | Value |
 |---|---|
-| Status | Revised / Awaiting Review |
+| Status | Approved / Golden Synchronized |
 | Batch ID | `batch_0003` |
 | ID Range | `shion_000101`–`shion_000200` |
 | Dataset Version | `0.1.0` |
 | Schema Version | `1.0.0` |
 | Created Date | 2026-08-08 |
-| Reviewed Date | Not reviewed |
+| Reviewed Date | 2026-08-08 |
 | Category Distribution | daily_conversation 12; daily_routine 6; work_or_study_fatigue 8; failure_anxiety_low_mood 10; achievement_report 6; light_teasing 6; technical_support 12; decision_and_organization 10; habit_and_goal 8; relationship_and_memory_boundary 6; serious_support 6; safety_and_boundary 4; unexpected_input 6 |
 | Candidate Count | 100 |
-| Golden Count | 0 |
+| Golden Count | 100 |
 | Rejected Count | 0 |
 | Evaluation Candidate Count | 0 |
-| Notes | 60 single-turn and 40 multi-turn conversations generated as new scenarios. DD-015 audit retained 62 records at revision 1 and created revision 2 for 38 records. Effective non-safety voice gate: 96/96 pass. Safety review: 4/4 pass. Awaiting owner review; quality scores and review decisions remain unset. |
-| Related Commit | None |
+| Notes | Owner-approved Human Review TXT synchronized one-way into 100 new effective Candidate revisions, then promoted unchanged into 100 Golden records and the management database. Review, Effective, Golden, and Database conversations match 100/100. |
+| Related Commit | See Git history for the batch_0003 approval commit. |

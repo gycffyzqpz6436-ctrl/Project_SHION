@@ -4,7 +4,7 @@ Dataset Version: 0.1.0
 
 Schema Version: 1.0.0
 
-Status: Scaffold only; no conversation records exist
+Status: Candidate generation active; batch_0003 Owner approval synchronized
 
 ---
 
@@ -76,4 +76,20 @@ The planned first batch is `batch_0001`, covering `shion_000001` through `shion_
 
 Every conversation must contain at least two messages, begin with `user`, end with `assistant`, and alternate roles. The JSON Schema validates the minimum length, allowed roles, and first role. A separate operational check must validate the final role and alternation before review or promotion.
 
-No Candidate, Golden, Rejected, Evaluation, review, database, or statistics records currently exist.
+Candidate, review, prompt-record, and statistics artifacts may exist while owner review is in progress. Golden, Rejected, and Evaluation status still require their separately defined review and approval steps.
+
+For `batch_0003`, the Owner-edited Human Review TXT is preserved as the approval Source of Truth. Its conversations were synchronized one-way into new effective Candidate revisions, Golden records, and the management database. Earlier Candidate revisions remain as history.
+
+## Semantic Review Boundary
+
+[`../tools/validate_dataset.py`](../tools/validate_dataset.py) validates JSON, Schema, identity, revision, lineage, review-state, rejection-code, and cross-set integrity rules. It does not determine whether a conversation passes DD-015 or DD-016.
+
+Before owner review, generation and review must also apply:
+
+- the Decoration Removal Test
+- the Unsolicited Support Gate
+- fact-grounded teasing review
+- conversation-completion diversity review
+- contextual helpfulness review
+
+These require semantic human or model-assisted judgment. A structural Validator success must never be reported as proof that a Candidate is SHION-like or Golden-ready.

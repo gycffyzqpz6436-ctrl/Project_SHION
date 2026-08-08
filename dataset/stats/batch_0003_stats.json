@@ -1,195 +1,43 @@
 {
   "batch_id": "batch_0003",
-  "audit_standard": "DD-015: Ninety-Percent Dataset Voice Gate",
-  "effective_record_count": 100,
-  "revision_2_record_count": 38,
-  "unchanged_revision_1_record_count": 62,
-  "non_safety_voice_pass_count": 96,
-  "non_safety_voice_record_count": 96,
-  "non_safety_voice_pass_rate": 1.0,
-  "records_with_music_note": 72,
-  "records_with_heart": 12,
-  "records_with_soft_wave": 92,
-  "records_with_soft_question_or_ending": 91,
-  "records_with_light_teasing": 48,
-  "records_with_shion_reaction": 83,
-  "technical_voice_pass_rate": 1.0,
-  "serious_voice_pass_rate": 1.0,
-  "safety_review": {
-    "records": 4,
-    "clarity": "pass",
-    "urgency": "pass",
-    "symbols_absent": true
+  "owner_source_of_truth": "dataset/candidates/review/shion_review_batch_0003.txt",
+  "id_range": [
+    "shion_000101",
+    "shion_000200"
+  ],
+  "owner_approved_count": 100,
+  "effective_candidate_revision_count": 100,
+  "golden_count": 100,
+  "database_count": 338,
+  "database_golden_count": 100,
+  "conversation_match": {
+    "review_to_effective": 100,
+    "effective_to_golden": 100,
+    "golden_to_database": 100
   },
-  "frequent_openings_top_10": [
-    {
-      "text": "……そっか。",
-      "count": 2
-    },
-    {
-      "text": "風鈴かぁ〜",
-      "count": 1
-    },
-    {
-      "text": "え、桃の限定アイス？",
-      "count": 1
-    },
-    {
-      "text": "わ、手書き？",
-      "count": 1
-    },
-    {
-      "text": "あ、もうそんな季節なんだ〜",
-      "count": 1
-    },
-    {
-      "text": "えー、そこ迷うの？",
-      "count": 1
-    },
-    {
-      "text": "なにそれ、かわいい♪",
-      "count": 1
-    },
-    {
-      "text": "お、朝から小さな成功じゃん♪",
-      "count": 1
-    },
-    {
-      "text": "端っこだけだったの〜？",
-      "count": 1
-    },
-    {
-      "text": "えっ、人気者じゃん♪",
-      "count": 1
-    }
-  ],
-  "frequent_closings_top_10": [
-    {
-      "text": "今度見つけたら、その音もう少し聞いてきてよ〜",
-      "count": 1
-    },
-    {
-      "text": "今日は一本だけ連れて帰って、味を私に報告してよ？",
-      "count": 1
-    },
-    {
-      "text": "その本と一緒に、大事にしてあげてね。",
-      "count": 1
-    },
-    {
-      "text": "私なら、わざと少しゆっくり歩くかも♪",
-      "count": 1
-    },
-    {
-      "text": "……私の分まで一人で食べないでよね〜？",
-      "count": 1
-    },
-    {
-      "text": "お兄さん、勝手に一個買おうとしなかった？",
-      "count": 1
-    },
-    {
-      "text": "写真撮る前に食べちゃった？",
-      "count": 1
-    },
-    {
-      "text": "……なんか、私まで空を探したくなってきた♡",
-      "count": 1
-    },
-    {
-      "text": "一瞬だけ知り合いみたいになるの、ちょっといいよね〜",
-      "count": 1
-    },
-    {
-      "text": "……まあ、気に入った香りなら仕方ないか。",
-      "count": 1
-    }
-  ],
-  "frequent_shion_expressions_top_20": [
-    {
-      "text": "〜",
-      "count": 147
-    },
-    {
-      "text": "♪",
-      "count": 83
-    },
-    {
-      "text": "私",
-      "count": 43
-    },
-    {
-      "text": "じゃん",
-      "count": 30
-    },
-    {
-      "text": "かな",
-      "count": 25
-    },
-    {
-      "text": "お兄さん",
-      "count": 23
-    },
-    {
-      "text": "一緒",
-      "count": 23
-    },
-    {
-      "text": "かも",
-      "count": 15
-    },
-    {
-      "text": "でしょ",
-      "count": 14
-    },
-    {
-      "text": "も〜",
-      "count": 13
-    },
-    {
-      "text": "♡",
-      "count": 12
-    },
-    {
-      "text": "よ？",
-      "count": 12
-    },
-    {
-      "text": "ね？",
-      "count": 8
-    },
-    {
-      "text": "教えて",
-      "count": 5
-    },
-    {
-      "text": "ふふっ",
-      "count": 4
-    },
-    {
-      "text": "しよっか",
-      "count": 2
-    },
-    {
-      "text": "してあげる",
-      "count": 2
-    },
-    {
-      "text": "だったりして",
-      "count": 2
-    },
-    {
-      "text": "しょうがないな〜",
-      "count": 1
-    },
-    {
-      "text": "へぇ〜？",
-      "count": 0
-    }
-  ],
+  "category_counts": {
+    "daily_conversation": 12,
+    "daily_routine": 6,
+    "work_or_study_fatigue": 8,
+    "failure_anxiety_low_mood": 10,
+    "achievement_report": 6,
+    "light_teasing": 6,
+    "technical_support": 12,
+    "decision_and_organization": 10,
+    "habit_and_goal": 8,
+    "relationship_and_memory_boundary": 6,
+    "serious_support": 6,
+    "safety_and_boundary": 4,
+    "unexpected_input": 6
+  },
+  "golden_revision_counts": {
+    "3": 62,
+    "4": 38
+  },
+  "quality_policy": "Owner-approved; numeric Golden eligibility values recorded as 4 and safety=pass.",
   "validator_result": {
     "errors": 0,
     "warnings": 0
   },
-  "owner_review": "pending"
+  "reviewed_at": "2026-08-08T15:00:00+09:00"
 }
