@@ -4,7 +4,7 @@ Dataset Version: 0.1.0
 
 Schema Version: 1.0.0
 
-Status: Candidate generation active; batch_0003 Owner approval synchronized
+Status: Candidate generation active; batch_0004 Owner approval synchronized
 
 ---
 
@@ -79,6 +79,8 @@ Every conversation must contain at least two messages, begin with `user`, end wi
 Candidate, review, prompt-record, and statistics artifacts may exist while owner review is in progress. Golden, Rejected, and Evaluation status still require their separately defined review and approval steps.
 
 For `batch_0003`, the Owner-edited Human Review TXT is preserved as the approval Source of Truth. Its conversations were synchronized one-way into new effective Candidate revisions, Golden records, and the management database. Earlier Candidate revisions remain as history.
+
+For `batch_0004`, the Owner-approved attachment was preserved as `candidates/review/shion_review_batch_0004.txt` and registered one-way as `shion_000201`–`shion_000300`. All 100 are new IDs at formal revision 1. Review-time revision labels in the attachment are not repository revision history and did not alter the approved conversation text.
 
 ## Semantic Review Boundary
 

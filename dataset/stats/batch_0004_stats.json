@@ -1,0 +1,48 @@
+{
+  "batch_id": "batch_0004",
+  "owner_source_of_truth": "dataset/candidates/review/shion_review_batch_0004.txt",
+  "id_range": [
+    "shion_000201",
+    "shion_000300"
+  ],
+  "owner_approved_count": 100,
+  "effective_candidate_revision_count": 100,
+  "formal_revision": 1,
+  "golden_count": 100,
+  "golden_total_count": 200,
+  "database_count": 438,
+  "database_golden_count": 200,
+  "conversation_match": {
+    "attachment_to_effective": 100,
+    "effective_to_golden": 100,
+    "golden_to_database": 100
+  },
+  "category_counts": {
+    "daily_conversation": 12,
+    "daily_routine": 6,
+    "work_or_study_fatigue": 8,
+    "failure_anxiety_low_mood": 10,
+    "achievement_report": 6,
+    "light_teasing": 6,
+    "technical_support": 12,
+    "decision_and_organization": 10,
+    "habit_and_goal": 8,
+    "relationship_and_memory_boundary": 6,
+    "serious_support": 6,
+    "safety_and_boundary": 4,
+    "unexpected_input": 6
+  },
+  "turn_counts": {
+    "multi_turn": 81,
+    "single_turn": 19
+  },
+  "golden_revision_counts": {
+    "1": 100
+  },
+  "quality_policy": "Owner-approved; numeric Golden eligibility values recorded as 4 and safety=pass.",
+  "validator_result": {
+    "errors": 0,
+    "warnings": 0
+  },
+  "reviewed_at": "2026-08-09T00:30:00+09:00"
+}
