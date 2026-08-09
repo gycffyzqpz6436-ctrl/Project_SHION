@@ -37,6 +37,12 @@ from chat_local import (  # noqa: E402
 NEUTRAL_PROMPT_PATH = ROOT / "app" / "prompts" / "neutral_conversation.txt"
 
 
+def generation_eos_token_ids(model, tokenizer):
+    """Preserve model-specific turn/channel terminators when they are declared."""
+    configured = getattr(getattr(model, "generation_config", None), "eos_token_id", None)
+    return configured if configured is not None else tokenizer.eos_token_id
+
+
 class RepeatedSequenceStoppingCriteria(StoppingCriteria):
     """Stop only sustained, consecutive token-block loops in newly generated text."""
 
@@ -173,7 +179,7 @@ class LocalModelRuntime:
                     top_k=self.generation["top_k"],
                     repetition_penalty=self.generation["repetition_penalty"],
                     max_new_tokens=self.generation["max_new_tokens"],
-                    eos_token_id=self.tokenizer.eos_token_id,
+                    eos_token_id=generation_eos_token_ids(self.model, self.tokenizer),
                     pad_token_id=self.tokenizer.pad_token_id,
                     use_cache=True,
                     stopping_criteria=stopping_criteria,

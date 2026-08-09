@@ -57,7 +57,7 @@ Manual Test JP-Uncensored model, the Owner may run:
 ```powershell
 training\.venv\Scripts\python.exe app\server.py --model qwen3_8b_jp_uncensored_manual
 
-# Gemma 4 official 12B comparison candidate (run only after runtime gate is marked available)
+# Gemma 4 official 12B comparison candidate (Security/Runtime passed; quality not approved)
 training\.venv\Scripts\python.exe app\server.py --model gemma4_12b_it_manual
 ```
 

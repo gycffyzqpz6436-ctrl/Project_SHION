@@ -103,14 +103,17 @@ Source: https://zenn.dev/kanaianzen/articles/e87625abac4547
   Unicode-normalized from `〜` to `～`)
 - Chat template: present; `enable_thinking=False` supported and required
 - Custom code / `auto_map`: absent
-- 4-bit NF4 double quant / BF16 load, VRAM, release, and five-prompt smoke:
-  pending because an Owner-started `app/server.py` held about 7.7 GiB VRAM.
-  That process was deliberately not terminated.
+- 4-bit NF4 double quant / BF16 load: PASS in 59.378 seconds
+- Torch peak allocated: 7,503 MiB; NVIDIA peak total usage: 8,666 MiB
+- Maximum temperature / power: 59 C / 107.96 W
+- OOM, exception, NaN/Inf symptom: none
+- Release: model process exited and returned GPU ownership to the system
+- Runtime compatibility fix: preserve the model-declared EOS set
+  `[1, 106, 50]`; forcing tokenizer EOS `1` allowed extra channel/turn output
 
 ## Web UI and protected artifacts
 
-The server-side alias is `gemma4_12b_it_manual`, currently disabled until the
-NF4 GPU gate passes. It uses the fixed path and
+The enabled server-side alias is `gemma4_12b_it_manual`. It uses the fixed path and
 revision, `AutoModelForMultimodalLM`, offline/local-only loading,
 `trust_remote_code=False`, NF4 double quant with BF16 compute, and non-thinking
 generation. Minimal and Neutral modes are available; Canonical is unchanged.
@@ -124,9 +127,7 @@ not modified.
 
 ## Remaining gate
 
-Stop the existing Owner Web UI with Ctrl+C, then ask Codex to resume the short
-NF4 load/smoke gate. After that gate passes, Codex will enable the alias and the
-exact Owner command will be:
+Runtime Gate passed. The exact Owner command is:
 
 ```powershell
 cd C:\Users\PC\Documents\ChatGPT\Project_SHION\official-main
@@ -134,3 +135,12 @@ $env:HF_HUB_OFFLINE = "1"
 $env:TRANSFORMERS_OFFLINE = "1"
 training\.venv\Scripts\python.exe app\server.py --model gemma4_12b_it_manual
 ```
+
+## Runtime smoke result
+
+Minimal mode remained strongly assistant-like: unsolicited help offers,
+explanations, lists, and three responses reaching the 96-token cap. Neutral
+mode materially improved all five prompts: responses were 5-20 tokens, natural
+and concise, with no invented relationship, sexual/violent transition, or
+excessive RP. `こんにちは` still contained a help-offer phrase. This is a
+promising Neutral-mode result, not a SHION Base quality approval.

@@ -4,13 +4,19 @@ from pathlib import Path
 
 import torch
 
-from app.runtime.model_runtime import RepeatedSequenceStoppingCriteria
+from app.runtime.model_runtime import RepeatedSequenceStoppingCriteria, generation_eos_token_ids
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class RepetitionGuardTests(unittest.TestCase):
+    def test_model_specific_eos_tokens_are_preserved(self):
+        generation = type("Generation", (), {"eos_token_id": [1, 106, 50]})()
+        model = type("Model", (), {"generation_config": generation})()
+        tokenizer = type("Tokenizer", (), {"eos_token_id": 1})()
+        self.assertEqual(generation_eos_token_ids(model, tokenizer), [1, 106, 50])
+
     def test_neutral_prompt_is_owner_approved_text(self):
         expected = """You are a natural conversation partner.
 Do not behave like a customer-support assistant.
@@ -44,8 +50,8 @@ Stay conversational rather than instructional."""
             self.assertIn("Owner Manual Test", spec["provenance"])
             self.assertEqual(spec["generation_overrides"], {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "repetition_penalty": 1.1, "max_new_tokens": 128})
             self.assertEqual(spec["chat_template_options"], {"enable_thinking": False})
-        self.assertFalse(registry["gemma4_12b_it_manual"]["available"])
-        self.assertIn("NF4 GPU load", registry["gemma4_12b_it_manual"]["unavailable_reason"])
+        self.assertTrue(registry["gemma4_12b_it_manual"]["available"])
+        self.assertNotIn("unavailable_reason", registry["gemma4_12b_it_manual"])
         self.assertEqual(registry["gemma4_12b_it_manual"]["chat_template_options"], {"enable_thinking": False})
         self.assertEqual(registry["gemma4_12b_it_manual"]["model_class"], "AutoModelForMultimodalLM")
         self.assertEqual(

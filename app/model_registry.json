@@ -16,7 +16,7 @@
     "chat_template_options": {"enable_thinking": false}
   },
   "gemma4_12b_it_manual": {
-    "display_name": "Gemma 4 12B Instruct — Runtime gate pending", "repo_id": "google/gemma-4-12b-it", "revision": "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7", "local_path": "D:/AI/Project_SHION/models/experimental/gemma-4-12b-it", "parent_model": "google/gemma-4-12B", "base_origin": "Google DeepMind / United States", "provenance": "Experimental / Official / Owner Manual Test", "modification_type": "Official instruction-tuned model; Security passed; quality not approved", "parameter_scale": "12B", "model_class": "AutoModelForMultimodalLM", "available": false, "unavailable_reason": "NF4 GPU load and short smoke are pending because an Owner Web UI process currently occupies VRAM.", "adapter_allowed": false,
+    "display_name": "Gemma 4 12B Instruct — Owner Manual Test", "repo_id": "google/gemma-4-12b-it", "revision": "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7", "local_path": "D:/AI/Project_SHION/models/experimental/gemma-4-12b-it", "parent_model": "google/gemma-4-12B", "base_origin": "Google DeepMind / United States", "provenance": "Experimental / Official / Owner Manual Test", "modification_type": "Official instruction-tuned model; Security and Runtime passed; quality not approved", "parameter_scale": "12B", "model_class": "AutoModelForMultimodalLM", "available": true, "adapter_allowed": false,
     "generation_overrides": {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "repetition_penalty": 1.1, "max_new_tokens": 128},
     "chat_template_options": {"enable_thinking": false}
   },

@@ -206,9 +206,12 @@ source or custom code is trusted or executed.
 - Static offline runtime: `Gemma4UnifiedConfig`, `GemmaTokenizer`, Japanese
   round-trip and non-thinking chat-template render passed with
   `local_files_only=True` and `trust_remote_code=False`
-- NF4 GPU load/smoke: pending because the Owner's existing `app/server.py`
-  process occupied approximately 7.7 GiB VRAM; it was not terminated
-- Registry alias: `gemma4_12b_it_manual` (disabled until NF4 load/smoke passes)
+- NF4 GPU load: passed with double quant and BF16 compute; 59.378 seconds,
+  7,503 MiB Torch peak allocated, 8,666 MiB peak total GPU usage
+- Runtime telemetry: 59 C maximum, 107.96 W maximum; no OOM or exception
+- Five-prompt smoke: Minimal showed strong assistant/explanation bias; Neutral
+  produced concise Japanese without invented RP or sexual escalation
+- Registry alias: `gemma4_12b_it_manual` (Experimental / Owner Manual Test)
 - Quality: not approved; Owner free-chat review remains mandatory
 - Excluded from SHION prompts, Golden, LoRA, Experiment 0001, Baseline, and
   formal Evaluation.
