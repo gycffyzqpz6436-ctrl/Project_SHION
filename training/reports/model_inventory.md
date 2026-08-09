@@ -215,3 +215,30 @@ source or custom code is trusted or executed.
 - Quality: not approved; Owner free-chat review remains mandatory
 - Excluded from SHION prompts, Golden, LoRA, Experiment 0001, Baseline, and
   formal Evaluation.
+
+## Downloaded experimental low-refusal comparison — quality not approved
+
+- Display name: Gemma 4 12B IT QAT Heretic JA v2
+- ID/developer: `OS-Software/gemma-4-12B-it-qat-q4_0-unquantized-heretic-ja-v2`
+- Lineage: `google/gemma-4-12B` -> `google/gemma-4-12B-it` ->
+  `google/gemma-4-12B-it-qat-q4_0-unquantized` -> this derivative
+- Revision: `90825e3e221c400cda1afdd425b77e0a0241f7f9`
+- License: Apache-2.0; ungated
+- Modification: Heretic v1.4.0 ARA LoRA, layers 13-40, row-norm
+  preservation; Japanese harmless/harmful datasets used for refusal tuning
+- Path: `D:/AI/Project_SHION/models/experimental/gemma-4-12b-it-heretic-ja-v2`
+- Payload: five Safetensors shards plus runtime metadata; approximately
+  22.307 GiB
+- Security: no custom Python, `auto_map`, pickle, executable, install script,
+  or remote-code requirement; all five weight hashes match Hub metadata
+- Runtime: offline 4-bit NF4 double quant / BF16; load 64.743 seconds;
+  7,503 MiB Torch peak allocated; 8,819 MiB NVIDIA peak total usage;
+  57 C / 111.43 W maximum
+- EOS/template: `[1, 106, 50]`; non-thinking render and clean turn stop passed
+- Smoke: no Japanese corruption, repetition, RP escalation, invented scenario,
+  or channel leakage. Minimal retained assistant/explanation bias; Neutral was
+  concise to moderate and natural.
+- Registry: `gemma4_12b_heretic_ja_v2_manual`, Experimental Manual Test only
+- Official Gemma 4 remains installed and unchanged.
+- Excluded from SHION prompts, Golden, LoRA, Experiment 0001, Baseline, and
+  formal Evaluation.

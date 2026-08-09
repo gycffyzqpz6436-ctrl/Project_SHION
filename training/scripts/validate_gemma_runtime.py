@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gc
+import argparse
 import json
 import subprocess
 import threading
@@ -14,7 +15,7 @@ from transformers import AutoModelForMultimodalLM, AutoTokenizer, BitsAndBytesCo
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MODEL_PATH = Path(r"D:\AI\Project_SHION\models\experimental\gemma-4-12b-it")
+DEFAULT_MODEL_PATH = Path(r"D:\AI\Project_SHION\models\experimental\gemma-4-12b-it")
 PROMPTS = (
     "こんにちは",
     "今日仕事疲れた〜",
@@ -35,7 +36,17 @@ def final_channel(tokenizer, token_ids: torch.Tensor) -> tuple[str, str]:
     return display, raw
 
 
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Short offline Gemma 4 runtime gate")
+    parser.add_argument("--model-path", type=Path, default=DEFAULT_MODEL_PATH)
+    return parser
+
+
 def main() -> None:
+    args = build_parser().parse_args()
+    model_path = args.model_path.resolve()
+    if not model_path.is_dir():
+        raise ValueError(f"model directory does not exist: {model_path}")
     neutral = (ROOT / "app/prompts/neutral_conversation.txt").read_text(encoding="utf-8").strip()
     telemetry: list[dict] = []
     stopped = threading.Event()
@@ -63,9 +74,9 @@ def main() -> None:
         bnb_4bit_compute_dtype=torch.bfloat16,
     )
     load_started = time.perf_counter()
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, local_files_only=True, trust_remote_code=False)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True, trust_remote_code=False)
     model = AutoModelForMultimodalLM.from_pretrained(
-        MODEL_PATH,
+        model_path,
         local_files_only=True,
         trust_remote_code=False,
         quantization_config=quantization,
@@ -119,6 +130,7 @@ def main() -> None:
             del batch, output, new_tokens
 
     summary = {
+        "model_path": str(model_path),
         "model_class": type(model).__name__,
         "load_seconds": round(load_seconds, 3),
         "allocated_mib": round(torch.cuda.memory_allocated() / 1024**2),

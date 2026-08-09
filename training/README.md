@@ -59,12 +59,16 @@ training\.venv\Scripts\python.exe app\server.py --model qwen3_8b_jp_uncensored_m
 
 # Gemma 4 official 12B comparison candidate (Security/Runtime passed; quality not approved)
 training\.venv\Scripts\python.exe app\server.py --model gemma4_12b_it_manual
+
+# Japanese-targeted low-refusal Gemma 4 comparison (quality not approved)
+training\.venv\Scripts\python.exe app\server.py --model gemma4_12b_heretic_ja_v2_manual
 ```
 
 Available aliases are `ministral3_official`, `nemo12b_official`,
 `qwen3_8b_jp_uncensored_manual`, `qwen3_8b_erp_manual`, and
-`gemma4_12b_it_manual`. These entries are
-explicitly Experimental / Third-party / Owner Manual Test; availability does
+`gemma4_12b_it_manual`, and `gemma4_12b_heretic_ja_v2_manual`. The comparison
+entries are explicitly Experimental / Owner Manual Test; third-party entries
+are identified as such. Availability does
 not mean Quality Gate approval or formal SHION adoption. They use fixed
 non-thinking generation settings. Gemma 4 is the official Apache-2.0 checkpoint
 selected for Japanese-base Owner comparison; it is not an approved SHION base.

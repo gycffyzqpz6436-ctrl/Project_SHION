@@ -20,6 +20,11 @@
     "generation_overrides": {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "repetition_penalty": 1.1, "max_new_tokens": 128},
     "chat_template_options": {"enable_thinking": false}
   },
+  "gemma4_12b_heretic_ja_v2_manual": {
+    "display_name": "Gemma 4 12B Heretic JA v2 — Owner Manual Test", "repo_id": "OS-Software/gemma-4-12B-it-qat-q4_0-unquantized-heretic-ja-v2", "revision": "90825e3e221c400cda1afdd425b77e0a0241f7f9", "local_path": "D:/AI/Project_SHION/models/experimental/gemma-4-12b-it-heretic-ja-v2", "parent_model": "google/gemma-4-12B-it-qat-q4_0-unquantized", "base_origin": "Google DeepMind / United States; Japanese Heretic derivative by OS-Software", "provenance": "Experimental / Third-party / Owner Manual Test", "modification_type": "Heretic v1.4.0 ARA LoRA with row-norm preservation and Japanese refusal datasets; Security and Runtime passed; quality not approved", "parameter_scale": "12B", "model_class": "AutoModelForMultimodalLM", "available": true, "adapter_allowed": false,
+    "generation_overrides": {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "repetition_penalty": 1.1, "max_new_tokens": 128},
+    "chat_template_options": {"enable_thinking": false}
+  },
   "lumimaid12b_experimental": {
     "display_name": "Lumimaid Magnum v4 12B — License review required", "repo_id": "Undi95/Lumimaid-Magnum-v4-12B", "revision": "b8c5f69d657bc76ba77bb9fb33b41bd1e61f60f8", "local_path": "D:/AI/Project_SHION/models/experimental/lumimaid-magnum-v4-12b", "parent_model": "mistralai/Mistral-Nemo-Instruct-2407 + roleplay merges", "provenance": "Experimental / Third-party", "modification_type": "DELLA mergekit merge", "parameter_scale": "12B", "model_class": "AutoModelForCausalLM", "available": false, "unavailable_reason": "Repository license is not declared; download blocked by policy.", "adapter_allowed": false
   }

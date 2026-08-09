@@ -58,6 +58,12 @@ Stay conversational rather than instructional."""
             registry["gemma4_12b_it_manual"]["revision"],
             "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7",
         )
+        low_refusal = registry["gemma4_12b_heretic_ja_v2_manual"]
+        self.assertTrue(low_refusal["available"])
+        self.assertEqual(low_refusal["model_class"], "AutoModelForMultimodalLM")
+        self.assertEqual(low_refusal["revision"], "90825e3e221c400cda1afdd425b77e0a0241f7f9")
+        self.assertEqual(low_refusal["chat_template_options"], {"enable_thinking": False})
+        self.assertIn("quality not approved", low_refusal["modification_type"])
         self.assertNotIn("generation_overrides", registry["ministral3_official"])
         self.assertNotIn("generation_overrides", registry["nemo12b_official"])
 
