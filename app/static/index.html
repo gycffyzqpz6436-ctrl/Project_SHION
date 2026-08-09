@@ -12,12 +12,13 @@
     <header class="topbar">
       <div class="brand"><span class="sigil" aria-hidden="true">S</span><div><h1>SHION</h1><p>Local conversation</p></div></div>
       <div class="controls">
-        <label for="mode">Mode</label>
-        <select id="mode"><option value="minimal">Minimal</option><option value="canonical">Canonical</option></select>
+        <label for="model">Model</label><select id="model" aria-label="Model"></select>
+        <label for="mode">Mode</label><select id="mode"><option value="minimal">Minimal</option><option value="canonical">Canonical</option></select>
         <button id="reset" class="secondary" type="button">New chat</button>
       </div>
     </header>
     <section class="statusbar" aria-live="polite"><span id="status-dot"></span><span id="status">Starting</span><span id="model-note">Localhost only</span></section>
+    <section id="model-info" class="model-info" aria-live="polite"></section>
     <section id="messages" class="messages" aria-label="Conversation">
       <div class="welcome"><p class="eyebrow">PRIVATE · LOCAL · TEXT ONLY</p><h2>ここから、静かな対話を。</h2><p>モデルの準備が完了すると送信できます。会話はブラウザセッション内だけに保持され、ディスクへ保存されません。</p></div>
     </section>

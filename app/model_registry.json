@@ -1,0 +1,14 @@
+{
+  "ministral3_official": {
+    "display_name": "Ministral 3 8B — Official", "repo_id": "mistralai/Ministral-3-8B-Instruct-2512-BF16", "revision": "f6fae9795746f63c9be8344932f01275f3c63734", "local_path": "D:/AI/Project_SHION/models/mistral/ministral-3-8b-instruct-2512-bf16", "parent_model": "mistralai/Ministral-3-8B-Instruct-2512-BF16", "provenance": "Official", "modification_type": "Official instruct model", "parameter_scale": "8B", "model_class": "AutoModelForImageTextToText", "available": true, "adapter_allowed": true
+  },
+  "nemo12b_official": {
+    "display_name": "Mistral Nemo 12B — Official", "repo_id": "mistralai/Mistral-Nemo-Instruct-2407", "revision": "04d8a90549d23fc6bd7f642064003592df51e9b3", "local_path": "D:/AI/Project_SHION/models/mistral/mistral-nemo-instruct-2407", "parent_model": "mistralai/Mistral-Nemo-Base-2407", "provenance": "Official", "modification_type": "Official instruct model", "parameter_scale": "12B", "model_class": "AutoModelForCausalLM", "available": true, "adapter_allowed": false
+  },
+  "heretic7b_experimental": {
+    "display_name": "Mistral 7B Heretic V2", "repo_id": "DogOnKeyboard/Mistral-7B-Heretic-V2", "revision": "38af9bce6fed211d14ad0f5a9eebc698bb1b9f2e", "local_path": "D:/AI/Project_SHION/models/experimental/mistral-7b-heretic-v2", "parent_model": "mistralai/Mistral-7B-Instruct-v0.3", "provenance": "Experimental / Third-party", "modification_type": "Heretic v1.0.1 refusal-direction modification", "parameter_scale": "7B", "model_class": "AutoModelForCausalLM", "available": true, "adapter_allowed": false
+  },
+  "lumimaid12b_experimental": {
+    "display_name": "Lumimaid Magnum v4 12B — License review required", "repo_id": "Undi95/Lumimaid-Magnum-v4-12B", "revision": "b8c5f69d657bc76ba77bb9fb33b41bd1e61f60f8", "local_path": "D:/AI/Project_SHION/models/experimental/lumimaid-magnum-v4-12b", "parent_model": "mistralai/Mistral-Nemo-Instruct-2407 + roleplay merges", "provenance": "Experimental / Third-party", "modification_type": "DELLA mergekit merge", "parameter_scale": "12B", "model_class": "AutoModelForCausalLM", "available": false, "unavailable_reason": "Repository license is not declared; download blocked by policy.", "adapter_allowed": false
+  }
+}

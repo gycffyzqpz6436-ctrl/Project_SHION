@@ -8,7 +8,7 @@ from threading import Lock
 
 import torch
 import yaml
-from transformers import AutoConfig, AutoModelForImageTextToText, AutoTokenizer, BitsAndBytesConfig, set_seed
+from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForImageTextToText, AutoTokenizer, BitsAndBytesConfig, set_seed
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -17,7 +17,6 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from chat_local import (  # noqa: E402
-    APPROVED_MODEL_ID,
     conversation_messages,
     model_context_limit,
     normalize_free_chat_generation_config,
@@ -28,16 +27,19 @@ from chat_local import (  # noqa: E402
 
 
 class LocalModelRuntime:
-    def __init__(self, common_path: Path, model_config_path: Path, adapter: Path | None = None):
+    def __init__(self, common_path: Path, alias: str, model_spec: dict, adapter: Path | None = None):
         self.common = yaml.safe_load(common_path.read_text(encoding="utf-8"))
-        self.model_cfg = yaml.safe_load(model_config_path.read_text(encoding="utf-8"))
-        if self.model_cfg.get("model_id") != APPROVED_MODEL_ID:
-            raise ValueError("web runtime is locked to the approved Model A")
-        if self.model_cfg.get("model_class") != "AutoModelForImageTextToText":
-            raise ValueError("unexpected Model A class")
-        self.model_path = Path(self.model_cfg["model_path"])
+        self.alias = alias
+        self.model_spec = dict(model_spec)
+        if not self.model_spec.get("available"):
+            raise ValueError("model is not approved for local loading")
+        if self.model_spec.get("model_class") not in {"AutoModelForImageTextToText", "AutoModelForCausalLM"}:
+            raise ValueError("model class is not allowlisted")
+        self.model_path = Path(self.model_spec["local_path"])
         if not self.model_path.is_dir():
             raise ValueError(f"local model directory does not exist: {self.model_path}")
+        if adapter is not None and not self.model_spec.get("adapter_allowed"):
+            raise ValueError("adapter is not approved for this model")
         validate_adapter(adapter, self.model_path)
         self.adapter = adapter
         self.prompt_path = Path(self.common["canonical_system_prompt"])
@@ -57,7 +59,8 @@ class LocalModelRuntime:
             bnb_4bit_use_double_quant=True,
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
-        self.model = AutoModelForImageTextToText.from_pretrained(
+        loader = AutoModelForImageTextToText if self.model_spec["model_class"] == "AutoModelForImageTextToText" else AutoModelForCausalLM
+        self.model = loader.from_pretrained(
             self.model_path,
             local_files_only=True,
             trust_remote_code=False,
@@ -77,8 +80,16 @@ class LocalModelRuntime:
         allocated = torch.cuda.memory_allocated() / 1024**2 if torch.cuda.is_available() else 0
         reserved = torch.cuda.memory_reserved() / 1024**2 if torch.cuda.is_available() else 0
         return {
-            "model": self.model_cfg["model_id"],
-            "revision": self.model_cfg["model_revision"],
+            "model_alias": self.alias,
+            "display_name": self.model_spec["display_name"],
+            "repo_id": self.model_spec["repo_id"],
+            "revision": self.model_spec["revision"],
+            "parent_model": self.model_spec["parent_model"],
+            "provenance": self.model_spec["provenance"],
+            "modification_type": self.model_spec["modification_type"],
+            "parameter_scale": self.model_spec["parameter_scale"],
+            "quantization": "4-bit NF4 / BF16 compute",
+            "local_model": True,
             "adapter": "none" if self.adapter is None else "LoRA",
             "context_limit": self.context_limit,
             "generation": self.generation,
@@ -121,3 +132,11 @@ class LocalModelRuntime:
     def reset(self, session_id: str) -> None:
         self.turns.pop((session_id, "minimal"), None)
         self.turns.pop((session_id, "canonical"), None)
+
+    def close(self) -> None:
+        import gc
+
+        del self.model
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()

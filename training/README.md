@@ -42,6 +42,24 @@ Future smartphone/tablet access is Stage 2/3 work and requires a separate
 design for authentication, TLS, and firewall policy before enabling a LAN or
 Tailscale bind. Do not change the current loopback restriction to expose it.
 
+The Web UI model selector is backed by `app/model_registry.json`; clients send
+an alias, never a path. Switching is allowed only while generation is idle,
+releases the current model, clears all conversation history, empties CUDA
+cache, and then loads the selected model. Third-party entries carry an explicit
+badge. Lumimaid Magnum remains visible but disabled because its repository does
+not declare a license.
+
+The default remains `ministral3_official`. To start directly with the approved
+experimental comparison model, the Owner may run:
+
+```powershell
+training\.venv\Scripts\python.exe app\server.py --model heretic7b_experimental
+```
+
+Available aliases are `ministral3_official`, `nemo12b_official`, and
+`heretic7b_experimental`. `lumimaid12b_experimental` is metadata-only and is
+rejected by the server even if a client submits the alias directly.
+
 The source of truth remains `dataset/golden/`. Generated files under
 `training/data/generated/` are disposable artifacts and must never be edited
 back into Golden or the database.

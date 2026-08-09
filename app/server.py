@@ -21,22 +21,39 @@ from app.runtime.model_runtime import LocalModelRuntime  # noqa: E402
 
 
 STATIC = Path(__file__).resolve().parent / "static"
+REGISTRY_PATH = Path(__file__).resolve().parent / "model_registry.json"
 MAX_BODY_BYTES = 128 * 1024
 LOG = logging.getLogger("shion_web")
 
 
 class RuntimeController:
-    def __init__(self) -> None:
+    def __init__(self, registry: dict | None = None) -> None:
         self.state = "Starting"
         self.runtime = None
+        self.registry = registry if registry is not None else json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+        self.current_alias = None
         self.histories: dict[tuple[str, str], list[dict]] = {}
         self.state_lock = threading.Lock()
 
-    def load(self, common: Path, model_config: Path, adapter: Path | None) -> None:
+    def public_models(self) -> list[dict]:
+        safe_keys = ("display_name", "repo_id", "revision", "parent_model", "provenance", "modification_type", "parameter_scale", "available", "unavailable_reason")
+        return [{"alias": alias, **{key: spec[key] for key in safe_keys if key in spec}} for alias, spec in self.registry.items()]
+
+    def load(self, common: Path, alias: str, adapter: Path | None = None) -> None:
+        spec = self.registry.get(alias)
+        if spec is None or not spec.get("available"):
+            raise ValueError("model alias is not available")
+        self.state = "Loading model"
+
         def worker() -> None:
-            self.state = "Loading model"
             try:
-                self.runtime = LocalModelRuntime(common, model_config, adapter)
+                old_runtime = self.runtime
+                self.runtime = None
+                if old_runtime is not None:
+                    old_runtime.close()
+                self.histories.clear()
+                self.runtime = LocalModelRuntime(common, alias, spec, adapter)
+                self.current_alias = alias
                 self.state = "Ready"
             except Exception:
                 self.state = "Error"
@@ -45,7 +62,7 @@ class RuntimeController:
         threading.Thread(target=worker, name="model-loader", daemon=True).start()
 
     def status(self) -> dict:
-        result = {"state": self.state}
+        result = {"state": self.state, "models": self.public_models()}
         if self.runtime is not None:
             result.update(self.runtime.status())
         return result
@@ -68,6 +85,15 @@ class RuntimeController:
             del self.histories[key]
         if self.runtime is not None:
             self.runtime.reset(session_id)
+
+    def switch(self, common: Path, alias: str, session_id: str) -> None:
+        with self.state_lock:
+            if self.state != "Ready":
+                raise RuntimeError("model is busy")
+            if alias == self.current_alias:
+                self.reset(session_id)
+                return
+            self.load(common, alias)
 
 
 class ShionServer(ThreadingHTTPServer):
@@ -149,6 +175,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.server.controller.reset(session_id)
                 self._json(HTTPStatus.OK, {"ok": True})
                 return
+            if path == "/api/model":
+                alias = payload.get("model_alias")
+                if not isinstance(alias, str):
+                    raise ValueError("model_alias required")
+                self.server.controller.switch(self.server.common_path, alias, session_id)
+                self._json(HTTPStatus.ACCEPTED, {"ok": True, "state": self.server.controller.state})
+                return
             if path != "/api/chat":
                 self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 return
@@ -176,16 +209,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="127.0.0.1", choices=["127.0.0.1"])
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--common", type=Path, default=Path("training/configs/common.yaml"))
-    parser.add_argument("--model-config", type=Path, default=Path("training/configs/shion_sft_exp_0001_ministral8b.yaml"))
+    parser.add_argument("--model", default="ministral3_official", help="Server-side allowlisted model alias")
     parser.add_argument("--adapter", type=Path)
     return parser
 
 
-def create_server(host: str, port: int, controller: RuntimeController) -> ShionServer:
+def create_server(host: str, port: int, controller: RuntimeController, common_path: Path = Path("training/configs/common.yaml")) -> ShionServer:
     if host != "127.0.0.1":
         raise ValueError("only 127.0.0.1 is permitted")
     server = ShionServer((host, port), Handler)
     server.controller = controller
+    server.common_path = common_path
     return server
 
 
@@ -193,8 +227,8 @@ def main() -> None:
     args = build_parser().parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     controller = RuntimeController()
-    server = create_server(args.host, args.port, controller)
-    controller.load(args.common, args.model_config, args.adapter)
+    server = create_server(args.host, args.port, controller, args.common)
+    controller.load(args.common, args.model, args.adapter)
     LOG.info("SHION Web Chat: http://%s:%s", args.host, args.port)
     LOG.info("Localhost only; press Ctrl+C to stop")
     try:

@@ -1,8 +1,10 @@
 import http.client
 import json
 import threading
+import time
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from app.server import RuntimeController, create_server
 
@@ -52,7 +54,9 @@ class WebAppTests(unittest.TestCase):
         self.assertIn(b"SHION Local Chat", body)
         self.assertIn("default-src 'self'", csp)
         status, _, body = self.request("GET", "/api/status")
-        self.assertEqual(json.loads(body)["state"], "Ready")
+        payload = json.loads(body)
+        self.assertEqual(payload["state"], "Ready")
+        self.assertNotIn("local_path", json.dumps(payload))
 
     def test_chat_reset_and_schema(self):
         session = "session-1234"
@@ -70,9 +74,35 @@ class WebAppTests(unittest.TestCase):
         status, _, _ = self.request("GET", "/api/status", host="example.com")
         self.assertEqual(status, 403)
 
+    def test_rejects_unavailable_and_arbitrary_model_alias(self):
+        session = "session-5678"
+        for alias in ("lumimaid12b_experimental", "D:/arbitrary/model"):
+            status, _, _ = self.request("POST", "/api/model", {"session_id": session, "model_alias": alias})
+            self.assertEqual(status, 400)
+
     def test_bind_is_locked_to_loopback(self):
         with self.assertRaisesRegex(ValueError, "127.0.0.1"):
             create_server("0.0.0.0", 0, RuntimeController())
+
+    def test_model_switch_releases_old_runtime_and_resets_history(self):
+        registry = {"next": {"available": True, "display_name": "Next", "repo_id": "owner/repo", "revision": "abc", "parent_model": "parent", "provenance": "Official", "modification_type": "test", "parameter_scale": "1B"}}
+        controller = RuntimeController(registry)
+        old = Mock()
+        controller.runtime = old
+        controller.state = "Ready"
+        controller.current_alias = "old"
+        controller.histories[("session-1234", "minimal")] = [{"role": "user", "content": "x"}]
+        replacement = Mock()
+        with patch("app.server.LocalModelRuntime", return_value=replacement):
+            controller.switch(Path("common.yaml"), "next", "session-1234")
+            for _ in range(100):
+                if controller.state in {"Ready", "Error"}:
+                    break
+                time.sleep(0.01)
+        self.assertEqual(controller.state, "Ready")
+        self.assertIs(controller.runtime, replacement)
+        old.close.assert_called_once()
+        self.assertEqual(controller.histories, {})
 
     def test_frontend_is_local_and_responsive(self):
         static = Path(__file__).resolve().parents[1] / "app" / "static"
@@ -83,6 +113,8 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("event.shiftKey", combined)
         self.assertIn("overflow:auto", combined)
         self.assertIn("escapeHtml", combined)
+        self.assertIn('id="model"', combined)
+        self.assertIn("/api/model", combined)
 
 
 if __name__ == "__main__":
