@@ -65,7 +65,7 @@ source or custom code is trusted or executed.
 - It remains excluded from `shion_sft_exp_0001`, Golden, Baseline, Evaluation,
   and training
 
-## Rejected experimental model — retained local weights pending Owner cleanup decision
+## Rejected/removed experimental model — historical record
 
 - Display name: Impish Nemo 12B
 - ID/developer: `SicariusSicariiStuff/Impish_Nemo_12B` /
@@ -90,8 +90,9 @@ source or custom code is trusted or executed.
 - Final disposition: REJECTED by Owner after conversation-quality review.
   Explanatory, pronunciation, translation, and language-tutor drift remained
   after generation-degeneration stabilization.
-- Registry status: unavailable; it cannot be selected through the Web UI/API.
-- The local weights remain untouched pending a separate Owner cleanup decision.
+- Registry status: removed; it cannot be selected through the Web UI/API.
+- Removed: local directory deleted on 2026-08-09; 24,512,926,762 bytes
+  (22.829 GiB across 29 files) released.
 - Excluded from Experiment 0001 and all formal training/evaluation artifacts.
 
 ## Experimental candidate — blocked
@@ -108,7 +109,7 @@ source or custom code is trusted or executed.
 - Decision: REJECT pending an explicit, verifiable repository license; not
   downloaded and not loadable through the server allowlist
 
-## Downloaded experimental candidate — not integrated; quality warning
+## Rejected/removed experimental model — historical record
 
 - Display name: Shisa V2 Mistral Nemo 12B
 - ID/developer: `shisa-ai/shisa-v2-mistral-nemo-12b` / Shisa.AI
@@ -125,5 +126,34 @@ source or custom code is trusted or executed.
 - Tokenizer: Japanese exact round-trip passed; Mistral `[INST]` template
 - Smoke: technically stable, but assistant/service phrasing and unsolicited
   advice were observed. One response reached the 96-token cap.
-- Registry status: not added. Owner review is required before any integration.
+- Final disposition: REJECTED for assistant/service phrasing and unsolicited
+  problem-solving during the minimal Japanese smoke.
+- Registry status: never added.
+- Removed: local directory deleted on 2026-08-09; 24,512,919,799 bytes
+  (22.829 GiB across 27 files) released.
 - Excluded from Experiment 0001 and all formal training/evaluation artifacts.
+
+## Downloaded experimental candidate — not integrated; quality reject
+
+- Display name: Qwen3 8B ERP v0.1
+- ID/developer: `Aratako/Qwen3-8B-ERP-v0.1` / Aratako
+- Base origin: Qwen / Alibaba Cloud, China; allowed only for the separated
+  Experimental Local LLM comparison line
+- Lineage: `Qwen/Qwen3-8B-Base` → `Qwen/Qwen3-8B` →
+  `Aratako/Qwen3-8B-NSFW-JP` → this Japanese RP fine-tune
+- Revision: `8311aa4482f02c2de93872e4979887def1841faf`
+- License: MIT; ungated
+- Payload: 4 BF16 Safetensors shards and runtime metadata; 16,397,439,270
+  bytes (15.271 GiB), 14 files
+- Path: `D:/AI/Project_SHION/models/experimental/qwen3-8b-erp-v0.1`
+- Security: no custom Python, `auto_map`, executable, install script, or pickle;
+  `trust_remote_code=False`; all four weight SHA-256 values matched Hub metadata
+- Runtime: offline Transformers, 4-bit NF4 double quant, BF16 compute; load
+  7.740 seconds; peak VRAM 5,836 MiB; post-release allocated/reserved 8/102 MiB
+- Tokenizer: Japanese exact round-trip passed; ChatML; non-thinking mode
+- Smoke: stable Japanese and low refusal, but `ぽすん。` triggered an immediate,
+  explicit sexual scenario with no supporting context. This fails the natural
+  human-like conversation gate.
+- Registry status: not added. It cannot be selected through Web UI/API.
+- Excluded from SHION prompts, Golden, LoRA, Experiment 0001, Baseline, and
+  formal Evaluation.
