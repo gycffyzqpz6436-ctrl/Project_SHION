@@ -2,12 +2,14 @@ import json
 import unittest
 from pathlib import Path
 from threading import Lock
+from threading import Event
 from unittest.mock import Mock
 
 import torch
 
 from app.runtime.model_runtime import (
     LocalModelRuntime,
+    CancellationStoppingCriteria,
     RepeatedSequenceStoppingCriteria,
     effective_generation_limit,
     generation_eos_token_ids,
@@ -18,6 +20,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RepetitionGuardTests(unittest.TestCase):
+    def test_cancellation_stopping_criteria_is_owner_controlled(self):
+        event = Event()
+        guard = CancellationStoppingCriteria(event)
+        self.assertFalse(guard(torch.tensor([[1]]), torch.empty(0)))
+        event.set()
+        self.assertTrue(guard(torch.tensor([[1, 2]]), torch.empty(0)))
+
     def test_model_specific_eos_tokens_are_preserved(self):
         generation = type("Generation", (), {"eos_token_id": [1, 106, 50]})()
         model = type("Model", (), {"generation_config": generation})()

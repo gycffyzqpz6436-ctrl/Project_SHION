@@ -6,7 +6,6 @@ import argparse
 import json
 import logging
 import sys
-import threading
 import traceback
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -17,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from app.core.shion_runtime import ShionRuntime  # noqa: E402
+from app.models.registry import ModelRegistry  # noqa: E402
 from app.runtime.model_runtime import LocalModelRuntime  # noqa: E402
 
 
@@ -26,74 +27,17 @@ MAX_BODY_BYTES = 128 * 1024
 LOG = logging.getLogger("shion_web")
 
 
-class RuntimeController:
+class RuntimeController(ShionRuntime):
+    """Compatibility facade for the original server import path."""
+
     def __init__(self, registry: dict | None = None) -> None:
-        self.state = "Starting"
-        self.runtime = None
-        self.registry = registry if registry is not None else json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
-        self.current_alias = None
-        self.histories: dict[tuple[str, str], list[dict]] = {}
-        self.state_lock = threading.Lock()
-
-    def public_models(self) -> list[dict]:
-        safe_keys = ("display_name", "repo_id", "revision", "parent_model", "base_origin", "provenance", "modification_type", "parameter_scale", "available", "unavailable_reason")
-        return [{"alias": alias, **{key: spec[key] for key in safe_keys if key in spec}} for alias, spec in self.registry.items()]
-
-    def load(self, common: Path, alias: str, adapter: Path | None = None) -> None:
-        spec = self.registry.get(alias)
-        if spec is None or not spec.get("available"):
-            raise ValueError("model alias is not available")
-        self.state = "Loading model"
-
-        def worker() -> None:
-            try:
-                old_runtime = self.runtime
-                self.runtime = None
-                if old_runtime is not None:
-                    old_runtime.close()
-                self.histories.clear()
-                self.runtime = LocalModelRuntime(common, alias, spec, adapter)
-                self.current_alias = alias
-                self.state = "Ready"
-            except Exception:
-                self.state = "Error"
-                LOG.error("Model loading failed\n%s", traceback.format_exc())
-
-        threading.Thread(target=worker, name="model-loader", daemon=True).start()
-
-    def status(self) -> dict:
-        result = {"state": self.state, "models": self.public_models()}
-        if self.runtime is not None:
-            result.update(self.runtime.status())
-        return result
-
-    def chat(self, session_id: str, mode: str, message: str) -> dict:
-        if self.state != "Ready" or self.runtime is None:
-            raise RuntimeError("モデルはまだ準備中です。")
-        key = (session_id, mode)
-        history = self.histories.setdefault(key, [])
-        self.state = "Generating"
-        try:
-            response, context_tokens = self.runtime.generate(session_id, mode, history, message)
-            history.extend(({"role": "user", "content": message}, {"role": "assistant", "content": response}))
-            return {"response": response, "context_tokens": context_tokens}
-        finally:
-            self.state = "Ready"
-
-    def reset(self, session_id: str) -> None:
-        for key in [key for key in self.histories if key[0] == session_id]:
-            del self.histories[key]
-        if self.runtime is not None:
-            self.runtime.reset(session_id)
-
-    def switch(self, common: Path, alias: str, session_id: str) -> None:
-        with self.state_lock:
-            if self.state != "Ready":
-                raise RuntimeError("model is busy")
-            if alias == self.current_alias:
-                self.reset(session_id)
-                return
-            self.load(common, alias)
+        model_registry = (
+            ModelRegistry(registry) if registry is not None else ModelRegistry.from_file(REGISTRY_PATH)
+        )
+        super().__init__(
+            model_registry,
+            model_factory=lambda common, alias, spec, adapter: LocalModelRuntime(common, alias, spec, adapter),
+        )
 
 
 class ShionServer(ThreadingHTTPServer):
@@ -158,6 +102,8 @@ class Handler(BaseHTTPRequestHandler):
             self._static("app.js", "text/javascript; charset=utf-8")
         elif path == "/styles.css":
             self._static("styles.css", "text/css; charset=utf-8")
+        elif path == "/assets/shion/avatar.svg":
+            self._static("assets/shion/avatar.svg", "image/svg+xml")
         else:
             self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
@@ -171,6 +117,10 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(session_id, str) or not 8 <= len(session_id) <= 80 or not session_id.isascii():
                 raise ValueError("invalid session_id")
             path = urlparse(self.path).path
+            if path == "/api/stop":
+                stopped = self.server.controller.cancel(session_id)
+                self._json(HTTPStatus.ACCEPTED, {"ok": True, "stop_requested": stopped})
+                return
             if path == "/api/reset":
                 self.server.controller.reset(session_id)
                 self._json(HTTPStatus.OK, {"ok": True})

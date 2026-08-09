@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from threading import Lock
+from threading import Event, Lock
 
 import torch
 import yaml
@@ -72,6 +72,16 @@ class RepeatedSequenceStoppingCriteria(StoppingCriteria):
         return False
 
 
+class CancellationStoppingCriteria(StoppingCriteria):
+    """Stop generation when the Owner requests cancellation for this session."""
+
+    def __init__(self, event: Event):
+        self.event = event
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+        return self.event.is_set()
+
+
 class LocalModelRuntime:
     def __init__(self, common_path: Path, alias: str, model_spec: dict, adapter: Path | None = None):
         self.common = yaml.safe_load(common_path.read_text(encoding="utf-8"))
@@ -98,6 +108,7 @@ class LocalModelRuntime:
         self.chat_template_options = dict(self.model_spec.get("chat_template_options", {}))
         self.lock = Lock()
         self.turns: dict[tuple[str, str], int] = {}
+        self.cancel_events: dict[str, Event] = {}
 
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_path, local_files_only=True, trust_remote_code=False, fix_mistral_regex=True
@@ -157,6 +168,10 @@ class LocalModelRuntime:
     def generate(self, session_id: str, mode: str, history: list[dict], user_text: str) -> tuple[str, int]:
         if mode not in {"minimal", "neutral", "canonical"}:
             raise ValueError("mode must be minimal, neutral, or canonical")
+        cancel_event = Event()
+        if not hasattr(self, "cancel_events"):
+            self.cancel_events = {}
+        self.cancel_events[session_id] = cancel_event
         proposed = history + [{"role": "user", "content": user_text}]
         messages = ([{"role": "system", "content": self.neutral_prompt}, *proposed]
                     if mode == "neutral" else conversation_messages(mode, self.prompt_path, proposed))
@@ -173,10 +188,10 @@ class LocalModelRuntime:
                 messages, tokenize=True, add_generation_prompt=True, return_tensors="pt", return_dict=True,
                 **self.chat_template_options,
             ).to(self.model.device)
-            stopping_criteria = None
+            criteria = [CancellationStoppingCriteria(cancel_event)]
             if self.repetition_guard:
                 guard = RepeatedSequenceStoppingCriteria(batch["input_ids"].shape[1], **self.repetition_guard)
-                stopping_criteria = StoppingCriteriaList([guard])
+                criteria.append(guard)
             set_seed(self.generation["seed"] + self.turns.get(key, 0))
             with torch.inference_mode():
                 output_ids = self.model.generate(
@@ -190,15 +205,24 @@ class LocalModelRuntime:
                     eos_token_id=generation_eos_token_ids(self.model, self.tokenizer),
                     pad_token_id=self.tokenizer.pad_token_id,
                     use_cache=True,
-                    stopping_criteria=stopping_criteria,
+                    stopping_criteria=StoppingCriteriaList(criteria),
                 )
             self.turns[key] = self.turns.get(key, 0) + 1
+        self.cancel_events.pop(session_id, None)
         response = self.tokenizer.decode(
             output_ids[0, batch["input_ids"].shape[1]:], skip_special_tokens=True
         ).strip()
         return response, input_tokens
 
+    def cancel(self, session_id: str) -> bool:
+        event = self.cancel_events.get(session_id)
+        if event is None:
+            return False
+        event.set()
+        return True
+
     def reset(self, session_id: str) -> None:
+        self.cancel_events.pop(session_id, None)
         self.turns.pop((session_id, "minimal"), None)
         self.turns.pop((session_id, "neutral"), None)
         self.turns.pop((session_id, "canonical"), None)
