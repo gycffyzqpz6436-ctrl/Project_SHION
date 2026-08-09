@@ -53,11 +53,11 @@ The default remains `ministral3_official`. To start directly with the approved
 experimental comparison model, the Owner may run:
 
 ```powershell
-training\.venv\Scripts\python.exe app\server.py --model heretic7b_experimental
+training\.venv\Scripts\python.exe app\server.py --model impish_nemo12b_experimental
 ```
 
 Available aliases are `ministral3_official`, `nemo12b_official`, and
-`heretic7b_experimental`. `lumimaid12b_experimental` is metadata-only and is
+`impish_nemo12b_experimental`. `lumimaid12b_experimental` is metadata-only and is
 rejected by the server even if a client submits the alias directly.
 
 The source of truth remains `dataset/golden/`. Generated files under

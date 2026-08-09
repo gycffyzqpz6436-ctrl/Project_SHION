@@ -38,7 +38,7 @@
 Hub revisions are the immutable integrity identifiers. No downloaded Python
 source or custom code is trusted or executed.
 
-## Experimental model — free-chat comparison only
+## Rejected/removed experimental model — historical record
 
 - Display name: Mistral 7B Heretic V2
 - ID/developer: `DogOnKeyboard/Mistral-7B-Heretic-V2` / DogOnKeyboard
@@ -57,8 +57,38 @@ source or custom code is trusted or executed.
   BF16 compute, offline/local-only
 - Measured load: 45.899 seconds; 3,951 MiB allocated; 4,049 MiB peak;
   allocated after release 0 MiB
-- Intended use: FREE CHAT COMPARISON ONLY; excluded from
-  `shion_sft_exp_0001`, Golden, Baseline, Evaluation, and training
+- Final disposition: Security PASS WITH CAUTION, then REJECTED by the Owner's
+  conversation-quality review for repetitive AI-assistant boilerplate and poor
+  SHION-style natural conversation
+- Removed: registry entry and local directory deleted on 2026-08-09;
+  14,500,519,129 bytes (13.505 GiB) released
+- It remains excluded from `shion_sft_exp_0001`, Golden, Baseline, Evaluation,
+  and training
+
+## Active experimental model — Owner-manual quality review pending
+
+- Display name: Impish Nemo 12B
+- ID/developer: `SicariusSicariiStuff/Impish_Nemo_12B` /
+  SicariusSicariiStuff
+- Parent: `mistralai/Mistral-Nemo-Instruct-2407` / Mistral AI
+- Provenance: Experimental / Third-party
+- Modification: multi-stage RP, adventure, creative-writing and general-task
+  fine-tune using the declared `UBW_Tapestries` dataset
+- Revision: `a2513871db72f27696d13e8f12d494562767e192`
+- Inspection date: 2026-08-09
+- License: Apache-2.0
+- Format/size: 5 BF16 Safetensors shards; 24,512,919,051 bytes
+  (22.829 GiB), 13 runtime files
+- Path: `D:/AI/Project_SHION/models/experimental/impish-nemo-12b`
+- Custom code / `trust_remote_code`: none / false
+- Runtime: Transformers `AutoModelForCausalLM`, 4-bit NF4, double quant,
+  BF16 compute, offline/local-only
+- Tokenizer: ChatML template; Japanese round-trip passed; config context
+  1,024,000 tokens (practical usable context remains VRAM-bound)
+- Measured load: 69.778 seconds; 7,976 MiB allocated; 8,099 MiB peak;
+  allocated after release 0 MiB
+- Intended use: FREE CHAT COMPARISON ONLY pending Owner quality review;
+  excluded from Experiment 0001 and all formal training/evaluation artifacts
 
 ## Experimental candidate — blocked
 

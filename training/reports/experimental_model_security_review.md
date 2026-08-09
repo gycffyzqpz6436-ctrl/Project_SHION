@@ -27,6 +27,16 @@ formal SHION Experiment 0001.
 
 Decision: approved only for Owner-manual, local free-chat comparison.
 
+### Owner conversation-quality disposition — REJECT / REMOVED
+
+The security result above remains unchanged. After an Owner-manual Japanese
+free-chat test, the model was rejected for SHION use because it repeatedly
+produced unnatural AI-assistant boilerplate about trying to provide an
+appropriate answer. Low refusal behavior did not translate into natural,
+human-like conversation or character suitability. On 2026-08-09 the allowlist
+entry was removed and the local model directory was deleted, releasing
+14,500,519,129 bytes (13.505 GiB).
+
 ## Candidate B — REJECT
 
 `Undi95/Lumimaid-Magnum-v4-12B` at
