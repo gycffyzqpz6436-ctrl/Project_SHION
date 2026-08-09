@@ -1,10 +1,17 @@
 import json
 import unittest
 from pathlib import Path
+from threading import Lock
+from unittest.mock import Mock
 
 import torch
 
-from app.runtime.model_runtime import RepeatedSequenceStoppingCriteria, generation_eos_token_ids
+from app.runtime.model_runtime import (
+    LocalModelRuntime,
+    RepeatedSequenceStoppingCriteria,
+    effective_generation_limit,
+    generation_eos_token_ids,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,12 +29,63 @@ class RepetitionGuardTests(unittest.TestCase):
 Do not behave like a customer-support assistant.
 Do not introduce yourself as an AI unless directly asked.
 For short casual messages, respond briefly and naturally.
+When the user explicitly requests detail or a long response, provide the requested appropriate level of detail and length.
 Do not turn casual conversation into advice, explanations, checklists, or recommendations unless requested.
 Do not invent relationships, roles, sexual scenarios, or fictional context that the user did not provide.
 React naturally to jokes, ambiguity, emotions, and casual remarks.
 Stay conversational rather than instructional."""
         actual = (ROOT / "app" / "prompts" / "neutral_conversation.txt").read_text(encoding="utf-8").strip()
         self.assertEqual(actual, expected)
+
+    def test_generation_limit_uses_hard_ceiling_and_remaining_context(self):
+        self.assertEqual(effective_generation_limit(100, 4096, 262144), 4096)
+        self.assertEqual(effective_generation_limit(260000, 4096, 262144), 2144)
+        with self.assertRaises(OverflowError):
+            effective_generation_limit(262144, 4096, 262144)
+
+    def test_generate_allows_early_eos_and_passes_clamped_limit(self):
+        class Batch(dict):
+            def to(self, _device):
+                return self
+
+        captured = {}
+
+        def apply_chat_template(_messages, return_tensors=None, **_kwargs):
+            if return_tensors is None:
+                return list(range(20))
+            return Batch(input_ids=torch.arange(20).reshape(1, 20))
+
+        def generate(**kwargs):
+            captured.update(kwargs)
+            return torch.cat((kwargs["input_ids"], torch.tensor([[99]])), dim=1)
+
+        runtime = LocalModelRuntime.__new__(LocalModelRuntime)
+        runtime.neutral_prompt = "neutral"
+        runtime.prompt_path = ROOT / "docs" / "unused.md"
+        runtime.chat_template_options = {"enable_thinking": False}
+        runtime.tokenizer = Mock(
+            apply_chat_template=apply_chat_template, decode=Mock(return_value="short reply"),
+            eos_token_id=1, pad_token_id=0,
+        )
+        runtime.model = Mock(
+            device=torch.device("cpu"), generate=generate,
+            generation_config=Mock(eos_token_id=[1, 106, 50]),
+        )
+        runtime.generation = {
+            "seed": 42, "temperature": 0.7, "top_p": 0.8, "top_k": 20,
+            "repetition_penalty": 1.1, "max_new_tokens": 4096,
+        }
+        runtime.context_limit = 100
+        runtime.repetition_guard = None
+        runtime.lock = Lock()
+        runtime.turns = {}
+
+        response, input_tokens = runtime.generate("session", "minimal", [], "hello")
+        self.assertEqual(response, "short reply")
+        self.assertEqual(input_tokens, 20)
+        self.assertEqual(captured["max_new_tokens"], 80)
+        self.assertEqual(captured["eos_token_id"], [1, 106, 50])
+        self.assertEqual(captured["input_ids"].shape[1] + captured["max_new_tokens"], 100)
 
     def test_stops_three_consecutive_repeated_blocks(self):
         guard = RepeatedSequenceStoppingCriteria(prompt_length=2, min_block_tokens=4, max_block_tokens=8, repeats=3)
@@ -53,6 +111,7 @@ Stay conversational rather than instructional."""
         self.assertTrue(registry["gemma4_12b_it_manual"]["available"])
         self.assertNotIn("unavailable_reason", registry["gemma4_12b_it_manual"])
         self.assertEqual(registry["gemma4_12b_it_manual"]["chat_template_options"], {"enable_thinking": False})
+        self.assertEqual(registry["gemma4_12b_it_manual"]["generation_overrides"]["max_new_tokens"], 4096)
         self.assertEqual(registry["gemma4_12b_it_manual"]["model_class"], "AutoModelForMultimodalLM")
         self.assertEqual(
             registry["gemma4_12b_it_manual"]["revision"],
@@ -63,6 +122,7 @@ Stay conversational rather than instructional."""
         self.assertEqual(low_refusal["model_class"], "AutoModelForMultimodalLM")
         self.assertEqual(low_refusal["revision"], "90825e3e221c400cda1afdd425b77e0a0241f7f9")
         self.assertEqual(low_refusal["chat_template_options"], {"enable_thinking": False})
+        self.assertEqual(low_refusal["generation_overrides"]["max_new_tokens"], 4096)
         self.assertIn("quality not approved", low_refusal["modification_type"])
         self.assertNotIn("generation_overrides", registry["ministral3_official"])
         self.assertNotIn("generation_overrides", registry["nemo12b_official"])

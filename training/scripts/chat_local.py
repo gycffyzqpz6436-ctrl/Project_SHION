@@ -81,13 +81,17 @@ def validate_adapter(path: Path | None, approved_local_model: Path | None = None
 def model_context_limit(config: Any, tokenizer: Any) -> int:
     candidates: list[int] = []
     for obj in (config, getattr(config, "text_config", None)):
-        for name in ("max_position_embeddings", "sliding_window"):
-            value = getattr(obj, name, None) if obj is not None else None
-            if isinstance(value, int) and 0 < value < 10_000_000:
-                candidates.append(value)
+        value = getattr(obj, "max_position_embeddings", None) if obj is not None else None
+        if isinstance(value, int) and 0 < value < 10_000_000:
+            candidates.append(value)
     tokenizer_limit = getattr(tokenizer, "model_max_length", None)
     if isinstance(tokenizer_limit, int) and 0 < tokenizer_limit < 10_000_000:
         candidates.append(tokenizer_limit)
+    if not candidates:
+        for obj in (config, getattr(config, "text_config", None)):
+            value = getattr(obj, "sliding_window", None) if obj is not None else None
+            if isinstance(value, int) and 0 < value < 10_000_000:
+                candidates.append(value)
     if not candidates:
         raise ValueError("could not determine a finite model context limit")
     return min(candidates)

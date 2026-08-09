@@ -43,6 +43,14 @@ def generation_eos_token_ids(model, tokenizer):
     return configured if configured is not None else tokenizer.eos_token_id
 
 
+def effective_generation_limit(input_tokens: int, hard_ceiling: int, context_limit: int) -> int:
+    """Clamp generation to remaining context without truncating conversation history."""
+    remaining = context_limit - input_tokens
+    if remaining <= 0:
+        raise OverflowError("conversation has reached the model context limit; start a new chat")
+    return min(hard_ceiling, remaining)
+
+
 class RepeatedSequenceStoppingCriteria(StoppingCriteria):
     """Stop only sustained, consecutive token-block loops in newly generated text."""
 
@@ -156,9 +164,9 @@ class LocalModelRuntime:
             messages, tokenize=True, add_generation_prompt=True, **self.chat_template_options
         )
         input_tokens = len(rendered_ids)
-        projected = input_tokens + self.generation["max_new_tokens"]
-        if projected > self.context_limit:
-            raise OverflowError("会話がコンテキスト上限に達しました。新しいチャットを開始してください。")
+        effective_max_new_tokens = effective_generation_limit(
+            input_tokens, self.generation["max_new_tokens"], self.context_limit
+        )
         key = (session_id, mode)
         with self.lock:
             batch = self.tokenizer.apply_chat_template(
@@ -178,7 +186,7 @@ class LocalModelRuntime:
                     top_p=self.generation["top_p"],
                     top_k=self.generation["top_k"],
                     repetition_penalty=self.generation["repetition_penalty"],
-                    max_new_tokens=self.generation["max_new_tokens"],
+                    max_new_tokens=effective_max_new_tokens,
                     eos_token_id=generation_eos_token_ids(self.model, self.tokenizer),
                     pad_token_id=self.tokenizer.pad_token_id,
                     use_cache=True,

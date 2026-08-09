@@ -43,6 +43,12 @@ class ChatLocalTests(unittest.TestCase):
         self.assertEqual(chat_local.model_context_limit(config, tokenizer), 32768)
         self.assertEqual(chat_local.rendered_token_count(tokenizer, [{"role": "user", "content": "x"}]), 3)
 
+    def test_sliding_window_is_not_mistaken_for_total_gemma_context(self):
+        text_config = Mock(max_position_embeddings=262144, sliding_window=1024)
+        config = Mock(max_position_embeddings=None, sliding_window=None, text_config=text_config)
+        tokenizer = Mock(model_max_length=262144)
+        self.assertEqual(chat_local.model_context_limit(config, tokenizer), 262144)
+
     def test_free_chat_removes_inherited_max_length(self):
         model = Mock()
         model.generation_config.max_length = 262144
