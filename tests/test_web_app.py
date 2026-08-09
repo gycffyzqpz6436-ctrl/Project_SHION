@@ -76,7 +76,13 @@ class WebAppTests(unittest.TestCase):
 
     def test_rejects_unavailable_and_arbitrary_model_alias(self):
         session = "session-5678"
-        for alias in ("heretic7b_experimental", "lumimaid12b_experimental", "D:/arbitrary/model"):
+        for alias in (
+            "heretic7b_experimental",
+            "impish_nemo12b_experimental",
+            "lumimaid12b_experimental",
+            "shisa_v2_nemo12b_experimental",
+            "D:/arbitrary/model",
+        ):
             status, _, _ = self.request("POST", "/api/model", {"session_id": session, "model_alias": alias})
             self.assertEqual(status, 400)
 

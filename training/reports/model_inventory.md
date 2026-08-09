@@ -65,7 +65,7 @@ source or custom code is trusted or executed.
 - It remains excluded from `shion_sft_exp_0001`, Golden, Baseline, Evaluation,
   and training
 
-## Active experimental model — Owner-manual quality review pending
+## Rejected experimental model — retained local weights pending Owner cleanup decision
 
 - Display name: Impish Nemo 12B
 - ID/developer: `SicariusSicariiStuff/Impish_Nemo_12B` /
@@ -87,8 +87,12 @@ source or custom code is trusted or executed.
   1,024,000 tokens (practical usable context remains VRAM-bound)
 - Measured load: 69.778 seconds; 7,976 MiB allocated; 8,099 MiB peak;
   allocated after release 0 MiB
-- Intended use: FREE CHAT COMPARISON ONLY pending Owner quality review;
-  excluded from Experiment 0001 and all formal training/evaluation artifacts
+- Final disposition: REJECTED by Owner after conversation-quality review.
+  Explanatory, pronunciation, translation, and language-tutor drift remained
+  after generation-degeneration stabilization.
+- Registry status: unavailable; it cannot be selected through the Web UI/API.
+- The local weights remain untouched pending a separate Owner cleanup decision.
+- Excluded from Experiment 0001 and all formal training/evaluation artifacts.
 
 ## Experimental candidate — blocked
 
@@ -103,3 +107,23 @@ source or custom code is trusted or executed.
 - License: not declared in repository metadata or Model Card
 - Decision: REJECT pending an explicit, verifiable repository license; not
   downloaded and not loadable through the server allowlist
+
+## Downloaded experimental candidate — not integrated; quality warning
+
+- Display name: Shisa V2 Mistral Nemo 12B
+- ID/developer: `shisa-ai/shisa-v2-mistral-nemo-12b` / Shisa.AI
+- Parent: `mistralai/Mistral-Nemo-Instruct-2407` / Mistral AI
+- Revision: `63f3d399b0013b868fa1bcd006bf45490cc1579c`
+- License: Apache-2.0
+- Payload: 5 BF16 Safetensors shards and runtime metadata; 24,512,914,789
+  bytes (22.829 GiB). `training_args.bin` and TensorBoard output excluded.
+- Path: `D:/AI/Project_SHION/models/experimental/shisa-v2-mistral-nemo-12b`
+- Security: no custom Python, `auto_map`, executable, install script, or pickle
+  in the downloaded payload; `trust_remote_code=False`
+- Runtime: offline Transformers, 4-bit NF4, BF16 compute; load 43.569 seconds;
+  peak VRAM 8,010 MiB; post-release allocated/reserved 8/148 MiB
+- Tokenizer: Japanese exact round-trip passed; Mistral `[INST]` template
+- Smoke: technically stable, but assistant/service phrasing and unsolicited
+  advice were observed. One response reached the 96-token cap.
+- Registry status: not added. Owner review is required before any integration.
+- Excluded from Experiment 0001 and all formal training/evaluation artifacts.
