@@ -8,7 +8,16 @@ from threading import Lock
 
 import torch
 import yaml
-from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForImageTextToText, AutoTokenizer, BitsAndBytesConfig, set_seed
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    AutoModelForImageTextToText,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    StoppingCriteria,
+    StoppingCriteriaList,
+    set_seed,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -24,6 +33,27 @@ from chat_local import (  # noqa: E402
     validate_adapter,
     validate_generation,
 )
+
+
+class RepeatedSequenceStoppingCriteria(StoppingCriteria):
+    """Stop only sustained, consecutive token-block loops in newly generated text."""
+
+    def __init__(self, prompt_length: int, min_block_tokens: int = 4, max_block_tokens: int = 32, repeats: int = 3):
+        self.prompt_length = prompt_length
+        self.min_block_tokens = min_block_tokens
+        self.max_block_tokens = max_block_tokens
+        self.repeats = repeats
+        self.triggered = False
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+        generated = input_ids[0, self.prompt_length :].tolist()
+        largest = min(self.max_block_tokens, len(generated) // self.repeats)
+        for size in range(self.min_block_tokens, largest + 1):
+            tail = generated[-size:]
+            if all(generated[-size * repeat : -size * (repeat - 1) or None] == tail for repeat in range(2, self.repeats + 1)):
+                self.triggered = True
+                return True
+        return False
 
 
 class LocalModelRuntime:
@@ -43,8 +73,9 @@ class LocalModelRuntime:
         validate_adapter(adapter, self.model_path)
         self.adapter = adapter
         self.prompt_path = Path(self.common["canonical_system_prompt"])
-        self.generation = dict(self.common["generation"])
+        self.generation = {**self.common["generation"], **self.model_spec.get("generation_overrides", {})}
         validate_generation(self.generation)
+        self.repetition_guard = self.model_spec.get("repetition_guard")
         self.lock = Lock()
         self.turns: dict[tuple[str, str], int] = {}
 
@@ -111,6 +142,10 @@ class LocalModelRuntime:
             batch = self.tokenizer.apply_chat_template(
                 messages, tokenize=True, add_generation_prompt=True, return_tensors="pt", return_dict=True
             ).to(self.model.device)
+            stopping_criteria = None
+            if self.repetition_guard:
+                guard = RepeatedSequenceStoppingCriteria(batch["input_ids"].shape[1], **self.repetition_guard)
+                stopping_criteria = StoppingCriteriaList([guard])
             set_seed(self.generation["seed"] + self.turns.get(key, 0))
             with torch.inference_mode():
                 output_ids = self.model.generate(
@@ -121,7 +156,10 @@ class LocalModelRuntime:
                     top_k=self.generation["top_k"],
                     repetition_penalty=self.generation["repetition_penalty"],
                     max_new_tokens=self.generation["max_new_tokens"],
+                    eos_token_id=self.tokenizer.eos_token_id,
                     pad_token_id=self.tokenizer.pad_token_id,
+                    use_cache=True,
+                    stopping_criteria=stopping_criteria,
                 )
             self.turns[key] = self.turns.get(key, 0) + 1
         response = self.tokenizer.decode(
