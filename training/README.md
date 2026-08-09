@@ -12,6 +12,19 @@ After the Owner reports completion, Codex inspects the produced artifacts and
 continues analysis. Short model-load checks and explicitly approved Smoke
 Training remain eligible for Codex execution.
 
+## Local interactive chat
+
+`scripts/chat_local.py` provides text-only, multi-turn conversation with the
+pinned local Model A. It loads the model once in 4-bit NF4/BF16 inference mode,
+never loads Golden data, and does not write a session unless `--save-session`
+is explicitly supplied. Modes `minimal` and `canonical` use the same prompt
+selection code as evaluation. `/status`, `/history`, `/reset`, `/help`, and
+`/exit` are available. Vision input is unsupported.
+
+An optional existing PEFT LoRA directory may be supplied with `--adapter` for
+future base/fine-tuned comparisons. The CLI only loads it for inference and
+never creates or updates an adapter or base-model weights.
+
 The source of truth remains `dataset/golden/`. Generated files under
 `training/data/generated/` are disposable artifacts and must never be edited
 back into Golden or the database.

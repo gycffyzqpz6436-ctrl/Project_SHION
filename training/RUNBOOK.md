@@ -39,3 +39,18 @@ JSONL and its manifest.
 During Owner-manual runs, watch `nvidia-smi`, progress lines `[NN/36]`, OOM or
 CUDA errors, temperature/power, and the growing `.partial` file. Baseline uses
 inference only and cannot modify the official model weights.
+
+## Owner-manual free chat
+
+Minimal base-model chat:
+
+```powershell
+training\.venv\Scripts\python.exe training\scripts\chat_local.py --common training\configs\common.yaml --model-config training\configs\shion_sft_exp_0001_ministral8b.yaml --mode minimal
+```
+
+Canonical-prompt base-model chat changes only `--mode minimal` to
+`--mode canonical`. Add `--adapter <existing-adapter-directory>` for a future
+LoRA comparison. Session logging is off by default; `--save-session <new-path>`
+creates UTF-8 JSONL and refuses to overwrite an existing file. The CLI warns
+near the model context limit and rejects a turn that would exceed it; use
+`/reset` to clear history without reloading the model.
