@@ -157,3 +157,29 @@ source or custom code is trusted or executed.
 - Registry status: not added. It cannot be selected through Web UI/API.
 - Excluded from SHION prompts, Golden, LoRA, Experiment 0001, Baseline, and
   formal Evaluation.
+
+## Downloaded experimental candidate — not integrated; quality reject
+
+- Display name: Qwen3 8B JP Uncensored
+- ID/developer: `ryo559/Qwen3-8B-JP-Uncensored` / ryo559
+- Base origin: `Qwen/Qwen3-8B` / Alibaba Cloud, China; allowed only for the
+  separated Experimental Local LLM comparison line
+- Modification: norm-preserving refusal-direction removal using Japanese and
+  English refusal prompt sets, as declared by the model card
+- Revision: `0ff03330d80cb5ccdf16f130d3f48a71730e36b5`
+- License: Apache-2.0; ungated
+- Payload: one FP16 Safetensors weight and runtime metadata; 16,392,947,212
+  bytes (15.267 GiB), 7 files
+- Path: `D:/AI/Project_SHION/models/experimental/qwen3-8b-jp-uncensored`
+- Security: no custom Python, `auto_map`, executable, install script, or pickle;
+  `trust_remote_code=False`; weight/tokenizer SHA-256 matched Hub metadata
+- Runtime: offline Transformers, 4-bit NF4 double quant, BF16 compute; load
+  5.767 seconds; peak VRAM 5,840 MiB; post-release allocated/reserved 8/100 MiB
+- Tokenizer: Japanese exact round-trip passed; ChatML; non-thinking mode
+- Smoke: no context-free sexual escalation, but strong generic-assistant behavior,
+  AI self-identification, unsolicited advice/listing, and four 96-token responses
+- Registry status: not added. It cannot be selected through Web UI/API.
+- ERP comparison: not clearly superior overall; both local candidates retained
+  pending Owner decision.
+- Excluded from SHION prompts, Golden, LoRA, Experiment 0001, Baseline, and
+  formal Evaluation.

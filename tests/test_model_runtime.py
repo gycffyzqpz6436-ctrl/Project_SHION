@@ -27,6 +27,7 @@ class RepetitionGuardTests(unittest.TestCase):
         self.assertNotIn("impish_nemo12b_experimental", registry)
         self.assertNotIn("shisa_v2_nemo12b_experimental", registry)
         self.assertNotIn("qwen3_8b_erp_experimental", registry)
+        self.assertNotIn("qwen3_8b_jp_uncensored_experimental", registry)
         self.assertNotIn("generation_overrides", registry["ministral3_official"])
         self.assertNotIn("generation_overrides", registry["nemo12b_official"])
 
