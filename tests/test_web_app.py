@@ -70,6 +70,13 @@ class WebAppTests(unittest.TestCase):
         status, _, _ = self.request("POST", "/api/chat", {"session_id": session, "mode": "bad", "message": "x"})
         self.assertEqual(status, 400)
 
+    def test_neutral_conversation_mode_is_accepted(self):
+        session = "session-neutral"
+        status, _, body = self.request("POST", "/api/chat", {"session_id": session, "mode": "neutral", "message": "hello"})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["response"], "reply: hello")
+        self.assertIn((session, "neutral"), self.controller.histories)
+
     def test_rejects_non_local_host_header(self):
         status, _, _ = self.request("GET", "/api/status", host="example.com")
         self.assertEqual(status, 403)
@@ -120,6 +127,8 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("overflow:auto", combined)
         self.assertIn("escapeHtml", combined)
         self.assertIn('id="model"', combined)
+        self.assertIn('value="neutral"', combined)
+        self.assertIn("Base origin:", combined)
         self.assertIn("/api/model", combined)
 
 

@@ -12,6 +12,7 @@ from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
     AutoModelForImageTextToText,
+    AutoModelForMultimodalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
     StoppingCriteria,
@@ -29,10 +30,11 @@ from chat_local import (  # noqa: E402
     conversation_messages,
     model_context_limit,
     normalize_free_chat_generation_config,
-    rendered_token_count,
     validate_adapter,
     validate_generation,
 )
+
+NEUTRAL_PROMPT_PATH = ROOT / "app" / "prompts" / "neutral_conversation.txt"
 
 
 class RepeatedSequenceStoppingCriteria(StoppingCriteria):
@@ -63,7 +65,9 @@ class LocalModelRuntime:
         self.model_spec = dict(model_spec)
         if not self.model_spec.get("available"):
             raise ValueError("model is not approved for local loading")
-        if self.model_spec.get("model_class") not in {"AutoModelForImageTextToText", "AutoModelForCausalLM"}:
+        if self.model_spec.get("model_class") not in {
+            "AutoModelForImageTextToText", "AutoModelForMultimodalLM", "AutoModelForCausalLM"
+        }:
             raise ValueError("model class is not allowlisted")
         self.model_path = Path(self.model_spec["local_path"])
         if not self.model_path.is_dir():
@@ -73,9 +77,11 @@ class LocalModelRuntime:
         validate_adapter(adapter, self.model_path)
         self.adapter = adapter
         self.prompt_path = Path(self.common["canonical_system_prompt"])
+        self.neutral_prompt = NEUTRAL_PROMPT_PATH.read_text(encoding="utf-8").strip()
         self.generation = {**self.common["generation"], **self.model_spec.get("generation_overrides", {})}
         validate_generation(self.generation)
         self.repetition_guard = self.model_spec.get("repetition_guard")
+        self.chat_template_options = dict(self.model_spec.get("chat_template_options", {}))
         self.lock = Lock()
         self.turns: dict[tuple[str, str], int] = {}
 
@@ -90,7 +96,12 @@ class LocalModelRuntime:
             bnb_4bit_use_double_quant=True,
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
-        loader = AutoModelForImageTextToText if self.model_spec["model_class"] == "AutoModelForImageTextToText" else AutoModelForCausalLM
+        loaders = {
+            "AutoModelForImageTextToText": AutoModelForImageTextToText,
+            "AutoModelForMultimodalLM": AutoModelForMultimodalLM,
+            "AutoModelForCausalLM": AutoModelForCausalLM,
+        }
+        loader = loaders[self.model_spec["model_class"]]
         self.model = loader.from_pretrained(
             self.model_path,
             local_files_only=True,
@@ -116,6 +127,7 @@ class LocalModelRuntime:
             "repo_id": self.model_spec["repo_id"],
             "revision": self.model_spec["revision"],
             "parent_model": self.model_spec["parent_model"],
+            "base_origin": self.model_spec.get("base_origin", "not specified"),
             "provenance": self.model_spec["provenance"],
             "modification_type": self.model_spec["modification_type"],
             "parameter_scale": self.model_spec["parameter_scale"],
@@ -129,18 +141,23 @@ class LocalModelRuntime:
         }
 
     def generate(self, session_id: str, mode: str, history: list[dict], user_text: str) -> tuple[str, int]:
-        if mode not in {"minimal", "canonical"}:
-            raise ValueError("mode must be minimal or canonical")
+        if mode not in {"minimal", "neutral", "canonical"}:
+            raise ValueError("mode must be minimal, neutral, or canonical")
         proposed = history + [{"role": "user", "content": user_text}]
-        messages = conversation_messages(mode, self.prompt_path, proposed)
-        input_tokens = rendered_token_count(self.tokenizer, messages, add_generation_prompt=True)
+        messages = ([{"role": "system", "content": self.neutral_prompt}, *proposed]
+                    if mode == "neutral" else conversation_messages(mode, self.prompt_path, proposed))
+        rendered_ids = self.tokenizer.apply_chat_template(
+            messages, tokenize=True, add_generation_prompt=True, **self.chat_template_options
+        )
+        input_tokens = len(rendered_ids)
         projected = input_tokens + self.generation["max_new_tokens"]
         if projected > self.context_limit:
             raise OverflowError("会話がコンテキスト上限に達しました。新しいチャットを開始してください。")
         key = (session_id, mode)
         with self.lock:
             batch = self.tokenizer.apply_chat_template(
-                messages, tokenize=True, add_generation_prompt=True, return_tensors="pt", return_dict=True
+                messages, tokenize=True, add_generation_prompt=True, return_tensors="pt", return_dict=True,
+                **self.chat_template_options,
             ).to(self.model.device)
             stopping_criteria = None
             if self.repetition_guard:
@@ -169,6 +186,7 @@ class LocalModelRuntime:
 
     def reset(self, session_id: str) -> None:
         self.turns.pop((session_id, "minimal"), None)
+        self.turns.pop((session_id, "neutral"), None)
         self.turns.pop((session_id, "canonical"), None)
 
     def close(self) -> None:

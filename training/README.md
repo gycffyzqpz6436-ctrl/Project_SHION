@@ -35,8 +35,10 @@ Tailscale, Internet exposure, and port forwarding are intentionally disabled.
 
 The model loads once in the background. Browser history is held only in server
 memory and `/api/reset` clears it; nothing is persisted to disk. The UI offers
-minimal and canonical modes. A future existing LoRA may be selected only at
-server startup with `--adapter`; the browser cannot supply model paths.
+minimal, neutral-conversation, and canonical modes. Neutral mode uses the
+non-character prompt in `app/prompts/neutral_conversation.txt`; canonical mode
+is unchanged. A future existing LoRA may be selected only at server startup
+with `--adapter`; the browser cannot supply model paths.
 
 Future smartphone/tablet access is Stage 2/3 work and requires a separate
 design for authentication, TLS, and firewall policy before enabling a LAN or
@@ -49,16 +51,25 @@ cache, and then loads the selected model. Third-party entries carry an explicit
 badge. Lumimaid Magnum remains visible but disabled because its repository does
 not declare a license.
 
-The default remains `ministral3_official`. To start directly with the approved
-experimental comparison model, the Owner may run:
+The default remains `ministral3_official`. To start directly with the Owner
+Manual Test JP-Uncensored model, the Owner may run:
 
 ```powershell
-training\.venv\Scripts\python.exe app\server.py --model impish_nemo12b_experimental
+training\.venv\Scripts\python.exe app\server.py --model qwen3_8b_jp_uncensored_manual
+
+# Gemma 4 official 12B comparison candidate (run only after runtime gate is marked available)
+training\.venv\Scripts\python.exe app\server.py --model gemma4_12b_it_manual
 ```
 
-Available aliases are `ministral3_official`, `nemo12b_official`, and
-`impish_nemo12b_experimental`. `lumimaid12b_experimental` is metadata-only and is
-rejected by the server even if a client submits the alias directly.
+Available aliases are `ministral3_official`, `nemo12b_official`,
+`qwen3_8b_jp_uncensored_manual`, `qwen3_8b_erp_manual`, and
+`gemma4_12b_it_manual`. These entries are
+explicitly Experimental / Third-party / Owner Manual Test; availability does
+not mean Quality Gate approval or formal SHION adoption. They use fixed
+non-thinking generation settings. Gemma 4 is the official Apache-2.0 checkpoint
+selected for Japanese-base Owner comparison; it is not an approved SHION base.
+`lumimaid12b_experimental` is metadata-only
+and is rejected by the server even if a client submits the alias directly.
 
 The source of truth remains `dataset/golden/`. Generated files under
 `training/data/generated/` are disposable artifacts and must never be edited

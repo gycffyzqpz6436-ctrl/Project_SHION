@@ -36,7 +36,7 @@ class RuntimeController:
         self.state_lock = threading.Lock()
 
     def public_models(self) -> list[dict]:
-        safe_keys = ("display_name", "repo_id", "revision", "parent_model", "provenance", "modification_type", "parameter_scale", "available", "unavailable_reason")
+        safe_keys = ("display_name", "repo_id", "revision", "parent_model", "base_origin", "provenance", "modification_type", "parameter_scale", "available", "unavailable_reason")
         return [{"alias": alias, **{key: spec[key] for key in safe_keys if key in spec}} for alias, spec in self.registry.items()]
 
     def load(self, common: Path, alias: str, adapter: Path | None = None) -> None:
@@ -189,7 +189,7 @@ class Handler(BaseHTTPRequestHandler):
             mode = payload.get("mode")
             if not isinstance(message, str) or not message.strip() or len(message) > 20_000:
                 raise ValueError("message must contain 1-20000 characters")
-            if mode not in {"minimal", "canonical"}:
+            if mode not in {"minimal", "neutral", "canonical"}:
                 raise ValueError("invalid mode")
             result = self.server.controller.chat(session_id, mode, message.strip())
             self._json(HTTPStatus.OK, result)

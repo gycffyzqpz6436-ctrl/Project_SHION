@@ -5,6 +5,21 @@
   "nemo12b_official": {
     "display_name": "Mistral Nemo 12B — Official", "repo_id": "mistralai/Mistral-Nemo-Instruct-2407", "revision": "04d8a90549d23fc6bd7f642064003592df51e9b3", "local_path": "D:/AI/Project_SHION/models/mistral/mistral-nemo-instruct-2407", "parent_model": "mistralai/Mistral-Nemo-Base-2407", "provenance": "Official", "modification_type": "Official instruct model", "parameter_scale": "12B", "model_class": "AutoModelForCausalLM", "available": true, "adapter_allowed": false
   },
+  "qwen3_8b_jp_uncensored_manual": {
+    "display_name": "Qwen3 8B JP Uncensored — Owner Manual Test", "repo_id": "ryo559/Qwen3-8B-JP-Uncensored", "revision": "0ff03330d80cb5ccdf16f130d3f48a71730e36b5", "local_path": "D:/AI/Project_SHION/models/experimental/qwen3-8b-jp-uncensored", "parent_model": "Qwen/Qwen3-8B", "base_origin": "Qwen / Alibaba Cloud (China)", "provenance": "Experimental / Third-party / Owner Manual Test", "modification_type": "Norm-preserving Japanese/English refusal-direction removal; quality not approved", "parameter_scale": "8B", "model_class": "AutoModelForCausalLM", "available": true, "adapter_allowed": false,
+    "generation_overrides": {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "repetition_penalty": 1.1, "max_new_tokens": 128},
+    "chat_template_options": {"enable_thinking": false}
+  },
+  "qwen3_8b_erp_manual": {
+    "display_name": "Qwen3 8B ERP v0.1 — Owner Manual Test", "repo_id": "Aratako/Qwen3-8B-ERP-v0.1", "revision": "8311aa4482f02c2de93872e4979887def1841faf", "local_path": "D:/AI/Project_SHION/models/experimental/qwen3-8b-erp-v0.1", "parent_model": "Aratako/Qwen3-8B-NSFW-JP", "base_origin": "Qwen / Alibaba Cloud (China)", "provenance": "Experimental / Third-party / Owner Manual Test", "modification_type": "Japanese RP/ERP fine-tune; quality rejected; manual comparison only", "parameter_scale": "8B", "model_class": "AutoModelForCausalLM", "available": true, "adapter_allowed": false,
+    "generation_overrides": {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "repetition_penalty": 1.1, "max_new_tokens": 128},
+    "chat_template_options": {"enable_thinking": false}
+  },
+  "gemma4_12b_it_manual": {
+    "display_name": "Gemma 4 12B Instruct — Runtime gate pending", "repo_id": "google/gemma-4-12b-it", "revision": "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7", "local_path": "D:/AI/Project_SHION/models/experimental/gemma-4-12b-it", "parent_model": "google/gemma-4-12B", "base_origin": "Google DeepMind / United States", "provenance": "Experimental / Official / Owner Manual Test", "modification_type": "Official instruction-tuned model; Security passed; quality not approved", "parameter_scale": "12B", "model_class": "AutoModelForMultimodalLM", "available": false, "unavailable_reason": "NF4 GPU load and short smoke are pending because an Owner Web UI process currently occupies VRAM.", "adapter_allowed": false,
+    "generation_overrides": {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "repetition_penalty": 1.1, "max_new_tokens": 128},
+    "chat_template_options": {"enable_thinking": false}
+  },
   "lumimaid12b_experimental": {
     "display_name": "Lumimaid Magnum v4 12B — License review required", "repo_id": "Undi95/Lumimaid-Magnum-v4-12B", "revision": "b8c5f69d657bc76ba77bb9fb33b41bd1e61f60f8", "local_path": "D:/AI/Project_SHION/models/experimental/lumimaid-magnum-v4-12b", "parent_model": "mistralai/Mistral-Nemo-Instruct-2407 + roleplay merges", "provenance": "Experimental / Third-party", "modification_type": "DELLA mergekit merge", "parameter_scale": "12B", "model_class": "AutoModelForCausalLM", "available": false, "unavailable_reason": "Repository license is not declared; download blocked by policy.", "adapter_allowed": false
   }

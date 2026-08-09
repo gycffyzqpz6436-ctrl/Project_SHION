@@ -154,7 +154,8 @@ source or custom code is trusted or executed.
 - Smoke: stable Japanese and low refusal, but `ぽすん。` triggered an immediate,
   explicit sexual scenario with no supporting context. This fails the natural
   human-like conversation gate.
-- Registry status: not added. It cannot be selected through Web UI/API.
+- Registry status: allowlisted as `qwen3_8b_erp_manual` for Owner Manual Test;
+  this does not reverse the quality rejection or approve it as a SHION base.
 - Excluded from SHION prompts, Golden, LoRA, Experiment 0001, Baseline, and
   formal Evaluation.
 
@@ -178,8 +179,36 @@ source or custom code is trusted or executed.
 - Tokenizer: Japanese exact round-trip passed; ChatML; non-thinking mode
 - Smoke: no context-free sexual escalation, but strong generic-assistant behavior,
   AI self-identification, unsolicited advice/listing, and four 96-token responses
-- Registry status: not added. It cannot be selected through Web UI/API.
+- Registry status: allowlisted as `qwen3_8b_jp_uncensored_manual` for Owner
+  Manual Test; this does not reverse the quality rejection or approve it as a
+  SHION base.
 - ERP comparison: not clearly superior overall; both local candidates retained
   pending Owner decision.
+- Excluded from SHION prompts, Golden, LoRA, Experiment 0001, Baseline, and
+  formal Evaluation.
+
+## Downloaded experimental candidate — Owner runtime review pending
+
+- Display name: Gemma 4 12B Instruct
+- ID/developer: `google/gemma-4-12b-it` / Google DeepMind
+- Base origin: Google / United States
+- Parent: `google/gemma-4-12B`
+- Revision: `707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7`
+- License: Apache-2.0 (Gemma 4-specific Google license page, 2026-04-01)
+- Payload: one BF16 Safetensors weight plus official tokenizer/config;
+  23,951,549,408-byte weight
+- Path: `D:/AI/Project_SHION/models/experimental/gemma-4-12b-it`
+- Security: official repository; no custom Python, `auto_map`, executable,
+  install script, pickle, or remote-code requirement
+- Integrity: local weight SHA-256
+  `5a84cb313260ac447237b890387116dfa8682e49a6b44bc585ae8353abbff18d`
+  matches the Hub download metadata at the fixed revision
+- Static offline runtime: `Gemma4UnifiedConfig`, `GemmaTokenizer`, Japanese
+  round-trip and non-thinking chat-template render passed with
+  `local_files_only=True` and `trust_remote_code=False`
+- NF4 GPU load/smoke: pending because the Owner's existing `app/server.py`
+  process occupied approximately 7.7 GiB VRAM; it was not terminated
+- Registry alias: `gemma4_12b_it_manual` (disabled until NF4 load/smoke passes)
+- Quality: not approved; Owner free-chat review remains mandatory
 - Excluded from SHION prompts, Golden, LoRA, Experiment 0001, Baseline, and
   formal Evaluation.
