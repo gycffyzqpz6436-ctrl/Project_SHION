@@ -216,3 +216,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# SHION local training environments and large artifacts
+training/.venv/
+training/data/generated/
+training_output/
+external/
+.env
+.env.*
+*.ckpt
+*.safetensors
+*.gguf
+*.bin
+*.pt
+*.pth
+wandb/
+runs/

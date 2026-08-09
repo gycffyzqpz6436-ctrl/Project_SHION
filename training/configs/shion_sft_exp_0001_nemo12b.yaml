@@ -1,0 +1,15 @@
+status: download_and_load_check_only
+training_forbidden_until_owner_approval: true
+model_id: mistralai/Mistral-Nemo-Instruct-2407
+model_revision: 04d8a90549d23fc6bd7f642064003592df51e9b3
+model_path: D:/AI/Project_SHION/models/mistral/mistral-nemo-instruct-2407
+model_class: AutoModelForCausalLM
+tokenizer_fix_mistral_regex: true
+quantization:
+  load_in_4bit: true
+  type: nf4
+  double_quantization: true
+  compute_dtype: bfloat16
+load_check_peak_vram_mib: 8099
+feasibility: load_and_inference_possible_but_training_not_approved
+

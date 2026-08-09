@@ -1,0 +1,22 @@
+experiment_id: shion_sft_exp_0001
+seed: 3407
+training_data: training/data/generated/shion_sft_exp_0001.jsonl
+evaluation_data: training/eval/shion_sft_exp_0001_eval.jsonl
+canonical_system_prompt: docs/ai/system_prompt.md
+training_system_prompt_mode: none
+evaluation_modes: [canonical, minimal]
+output_root: D:/AI/Project_SHION/training_output/shion_sft_exp_0001
+max_sequence_length: 2048
+assistant_only_loss: true
+packing: false
+trust_remote_code: false
+local_files_only: true
+
+generation:
+  seed: 3407
+  temperature: 0.3
+  top_p: 0.9
+  top_k: 50
+  repetition_penalty: 1.05
+  max_new_tokens: 512
+

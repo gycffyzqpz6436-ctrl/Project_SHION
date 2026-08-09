@@ -1,0 +1,55 @@
+experiment_id: shion_sft_exp_0001
+status: owner_review_required
+
+model:
+  name_or_path: OWNER_MUST_SELECT
+  revision: OWNER_MUST_PIN
+  trust_remote_code: false
+  use_model_chat_template: true
+  enable_thinking: false
+
+data:
+  source_glob: dataset/golden/*.jsonl
+  derived_file: training/data/generated/shion_sft_exp_0001.jsonl
+  system_prompt_file: docs/ai/system_prompt.md
+  system_prompt_mode: separate_message
+  max_sequence_length: 2048
+  truncation: reject
+  assistant_only_loss: true
+
+adapter:
+  method: qlora
+  quantization_bits: 4
+  quantization_type: nf4
+  double_quantization: true
+  lora_rank: 8
+  lora_alpha: 16
+  lora_dropout: 0.10
+  target_modules: OWNER_CONFIRM_FROM_MODEL_ARCHITECTURE
+
+training:
+  learning_rate: 0.00005
+  epochs: 3
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8
+  effective_batch_size: 8
+  optimizer: paged_adamw_8bit
+  scheduler: cosine
+  warmup_ratio: 0.10
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  seed: 3407
+  gradient_checkpointing: true
+  bf16: OWNER_CONFIRM_GPU_SUPPORT
+  fp16: OWNER_CONFIRM_IF_NO_BF16
+  save_strategy: epoch
+  save_total_limit: 3
+  logging_steps: 5
+  eval_strategy: fixed_external_benchmark
+
+reproducibility:
+  git_commit: d48f0799d530fe1fcbd00176770e908f7236e337
+  dataset_sha256: generated_by_converter
+  tokenizer_revision: OWNER_MUST_PIN
+  package_lock: OWNER_MUST_CREATE_AFTER_HARDWARE_APPROVAL
+
