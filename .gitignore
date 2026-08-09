@@ -231,3 +231,6 @@ external/
 *.pth
 wandb/
 runs/
+app/logs/
+app/cache/
+app/sessions/

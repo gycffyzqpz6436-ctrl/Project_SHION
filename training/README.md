@@ -25,6 +25,23 @@ An optional existing PEFT LoRA directory may be supplied with `--adapter` for
 future base/fine-tuned comparisons. The CLI only loads it for inference and
 never creates or updates an adapter or base-model weights.
 
+## Local web chat MVP
+
+Run `training\.venv\Scripts\python.exe app\server.py` from the repository
+root, then open `http://127.0.0.1:8765`. The responsive HTML/CSS/JavaScript UI
+and JSON API are entirely local and use no CDN, telemetry, cloud model, or
+Hugging Face communication. The server binds only to `127.0.0.1`; LAN,
+Tailscale, Internet exposure, and port forwarding are intentionally disabled.
+
+The model loads once in the background. Browser history is held only in server
+memory and `/api/reset` clears it; nothing is persisted to disk. The UI offers
+minimal and canonical modes. A future existing LoRA may be selected only at
+server startup with `--adapter`; the browser cannot supply model paths.
+
+Future smartphone/tablet access is Stage 2/3 work and requires a separate
+design for authentication, TLS, and firewall policy before enabling a LAN or
+Tailscale bind. Do not change the current loopback restriction to expose it.
+
 The source of truth remains `dataset/golden/`. Generated files under
 `training/data/generated/` are disposable artifacts and must never be edited
 back into Golden or the database.

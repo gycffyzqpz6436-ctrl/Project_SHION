@@ -43,6 +43,12 @@ class ChatLocalTests(unittest.TestCase):
         self.assertEqual(chat_local.model_context_limit(config, tokenizer), 32768)
         self.assertEqual(chat_local.rendered_token_count(tokenizer, [{"role": "user", "content": "x"}]), 3)
 
+    def test_free_chat_removes_inherited_max_length(self):
+        model = Mock()
+        model.generation_config.max_length = 262144
+        chat_local.normalize_free_chat_generation_config(model)
+        self.assertIsNone(model.generation_config.max_length)
+
     def test_adapter_validation(self):
         with tempfile.TemporaryDirectory() as directory:
             adapter = Path(directory)

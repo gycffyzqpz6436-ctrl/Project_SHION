@@ -1,0 +1,89 @@
+import http.client
+import json
+import threading
+import unittest
+from pathlib import Path
+
+from app.server import RuntimeController, create_server
+
+
+class FakeRuntime:
+    def status(self):
+        return {"model": "approved-model", "adapter": "none", "context_limit": 100, "generation": {}, "gpu_memory_allocated_mib": 1, "gpu_memory_reserved_mib": 2}
+
+    def generate(self, session_id, mode, history, message):
+        return f"reply: {message}", 12
+
+    def reset(self, session_id):
+        pass
+
+
+class WebAppTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.controller = RuntimeController()
+        cls.controller.runtime = FakeRuntime()
+        cls.controller.state = "Ready"
+        cls.server = create_server("127.0.0.1", 0, cls.controller)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        cls.port = cls.server.server_address[1]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def request(self, method, path, payload=None, host="127.0.0.1"):
+        connection = http.client.HTTPConnection("127.0.0.1", self.port)
+        body = None if payload is None else json.dumps(payload).encode()
+        headers = {"Host": host}
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        data = response.read()
+        connection.close()
+        return response.status, response.getheader("Content-Security-Policy"), data
+
+    def test_static_and_status(self):
+        status, csp, body = self.request("GET", "/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"SHION Local Chat", body)
+        self.assertIn("default-src 'self'", csp)
+        status, _, body = self.request("GET", "/api/status")
+        self.assertEqual(json.loads(body)["state"], "Ready")
+
+    def test_chat_reset_and_schema(self):
+        session = "session-1234"
+        status, _, body = self.request("POST", "/api/chat", {"session_id": session, "mode": "minimal", "message": "こんにちは"})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["response"], "reply: こんにちは")
+        self.assertEqual(len(self.controller.histories[(session, "minimal")]), 2)
+        status, _, _ = self.request("POST", "/api/reset", {"session_id": session})
+        self.assertEqual(status, 200)
+        self.assertNotIn((session, "minimal"), self.controller.histories)
+        status, _, _ = self.request("POST", "/api/chat", {"session_id": session, "mode": "bad", "message": "x"})
+        self.assertEqual(status, 400)
+
+    def test_rejects_non_local_host_header(self):
+        status, _, _ = self.request("GET", "/api/status", host="example.com")
+        self.assertEqual(status, 403)
+
+    def test_bind_is_locked_to_loopback(self):
+        with self.assertRaisesRegex(ValueError, "127.0.0.1"):
+            create_server("0.0.0.0", 0, RuntimeController())
+
+    def test_frontend_is_local_and_responsive(self):
+        static = Path(__file__).resolve().parents[1] / "app" / "static"
+        combined = "\n".join(path.read_text(encoding="utf-8") for path in static.iterdir() if path.is_file())
+        self.assertNotIn("https://", combined)
+        self.assertNotIn("http://", combined)
+        self.assertIn("@media(max-width:640px)", combined)
+        self.assertIn("event.shiftKey", combined)
+        self.assertIn("overflow:auto", combined)
+        self.assertIn("escapeHtml", combined)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -103,6 +103,11 @@ def rendered_token_count(tokenizer: Any, messages: list[dict], add_generation_pr
     return len(ids)
 
 
+def normalize_free_chat_generation_config(model: Any) -> None:
+    """Avoid inherited max_length competing with explicit max_new_tokens."""
+    model.generation_config.max_length = None
+
+
 class SessionWriter:
     def __init__(self, path: Path | None, metadata: dict):
         self.path = path
@@ -186,6 +191,7 @@ def main() -> None:
         from peft import PeftModel
 
         model = PeftModel.from_pretrained(model, args.adapter, is_trainable=False)
+    normalize_free_chat_generation_config(model)
     model.eval()
 
     prompt_hash = None

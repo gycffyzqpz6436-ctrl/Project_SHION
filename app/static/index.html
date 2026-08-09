@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
+  <title>SHION Local Chat</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="sigil" aria-hidden="true">S</span><div><h1>SHION</h1><p>Local conversation</p></div></div>
+      <div class="controls">
+        <label for="mode">Mode</label>
+        <select id="mode"><option value="minimal">Minimal</option><option value="canonical">Canonical</option></select>
+        <button id="reset" class="secondary" type="button">New chat</button>
+      </div>
+    </header>
+    <section class="statusbar" aria-live="polite"><span id="status-dot"></span><span id="status">Starting</span><span id="model-note">Localhost only</span></section>
+    <section id="messages" class="messages" aria-label="Conversation">
+      <div class="welcome"><p class="eyebrow">PRIVATE · LOCAL · TEXT ONLY</p><h2>ここから、静かな対話を。</h2><p>モデルの準備が完了すると送信できます。会話はブラウザセッション内だけに保持され、ディスクへ保存されません。</p></div>
+    </section>
+    <form id="composer" class="composer">
+      <label class="sr-only" for="message">メッセージ</label>
+      <textarea id="message" rows="1" maxlength="20000" placeholder="SHIONにメッセージを送る…" disabled></textarea>
+      <button id="send" type="submit" disabled>Send</button>
+      <p class="hint">Enterで送信 · Shift+Enterで改行</p>
+    </form>
+  </main>
+  <script src="/app.js" defer></script>
+</body>
+</html>
