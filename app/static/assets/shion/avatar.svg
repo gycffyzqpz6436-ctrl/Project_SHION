@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SHION">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#b59ae0"/><stop offset="1" stop-color="#65458f"/></linearGradient></defs>
+  <rect width="64" height="64" rx="20" fill="url(#g)"/>
+  <path d="M43 20c-3-4-8-6-13-5-6 1-10 5-9 10 1 5 6 7 11 8 5 1 8 2 8 6 0 3-3 6-8 6-5 0-9-2-12-6" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+</svg>

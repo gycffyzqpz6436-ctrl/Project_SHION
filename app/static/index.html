@@ -8,27 +8,44 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <main class="shell">
-    <header class="topbar">
-      <div class="brand"><span class="sigil" aria-hidden="true">S</span><div><h1>SHION</h1><p>Local conversation</p></div></div>
-      <div class="controls">
-        <label for="model">Model</label><select id="model" aria-label="Model"></select>
-        <label for="mode">Mode</label><select id="mode"><option value="minimal">Minimal</option><option value="neutral">Neutral Conversation</option><option value="canonical">Canonical</option></select>
-        <button id="reset" class="secondary" type="button">New chat</button>
-      </div>
-    </header>
-    <section class="statusbar" aria-live="polite"><span id="status-dot"></span><span id="status">Starting</span><span id="model-note">Localhost only</span></section>
-    <section id="model-info" class="model-info" aria-live="polite"></section>
-    <section id="messages" class="messages" aria-label="Conversation">
-      <div class="welcome"><p class="eyebrow">PRIVATE · LOCAL · TEXT ONLY</p><h2>ここから、静かな対話を。</h2><p>モデルの準備が完了すると送信できます。会話はブラウザセッション内だけに保持され、ディスクへ保存されません。</p></div>
-    </section>
-    <form id="composer" class="composer">
-      <label class="sr-only" for="message">メッセージ</label>
-      <textarea id="message" rows="1" maxlength="20000" placeholder="SHIONにメッセージを送る…" disabled></textarea>
-      <button id="send" type="submit" disabled>Send</button>
-      <p class="hint">Enterで送信 · Shift+Enterで改行</p>
-    </form>
-  </main>
+  <div class="workspace">
+    <aside class="sidebar" aria-label="Conversation navigation">
+      <p class="sidebar-title">Chats</p>
+      <button id="sidebar-reset" class="sidebar-new" type="button" aria-label="New chat">＋</button>
+      <div class="conversation-current" aria-current="page"><span></span><p>Current<br><small>Local session</small></p></div>
+    </aside>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="header-avatar" aria-hidden="true"><img src="/assets/shion/avatar.svg" alt=""><span>S</span></span>
+          <div><h1>SHION <span>紫苑</span></h1><p>Personal AI Companion</p></div>
+        </div>
+        <div class="controls">
+          <label for="model">Model</label><select id="model" aria-label="Model"></select>
+          <label for="mode">Mode</label><select id="mode"><option value="minimal">Minimal</option><option value="neutral">Neutral Conversation</option><option value="canonical">Canonical</option></select>
+          <button id="reset" class="secondary" type="button">New chat</button>
+        </div>
+      </header>
+      <section class="statusbar" aria-live="polite">
+        <span id="status-dot"></span><span id="status">Starting</span>
+        <span id="model-summary">Localhost only</span><span id="model-badge" class="badge" hidden>Experimental</span>
+      </section>
+      <details id="model-panel" class="model-panel">
+        <summary>Model Info</summary>
+        <div id="model-info" class="model-info" aria-live="polite"></div>
+      </details>
+      <section id="messages" class="messages" aria-label="Conversation">
+        <div class="welcome"><p class="eyebrow">PRIVATE · LOCAL · SHION</p><h2>ここから、静かな対話を。</h2><p>モデルの準備が完了すると送信できます。会話はブラウザセッション内だけに保持され、ディスクへ保存されません。</p></div>
+      </section>
+      <form id="composer" class="composer">
+        <div class="composer-slots" aria-hidden="true"><!-- Future attachment and voice controls --></div>
+        <label class="sr-only" for="message">メッセージ</label>
+        <textarea id="message" rows="1" maxlength="20000" placeholder="SHIONにメッセージを送る…" disabled></textarea>
+        <button id="send" type="submit" disabled>Send</button>
+        <p class="hint">Enterで送信 · Shift+Enterで改行</p>
+      </form>
+    </main>
+  </div>
   <script src="/app.js" defer></script>
 </body>
 </html>

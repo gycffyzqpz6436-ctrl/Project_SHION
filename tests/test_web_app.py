@@ -19,6 +19,9 @@ class FakeRuntime:
     def reset(self, session_id):
         pass
 
+    def cancel(self, session_id):
+        return True
+
 
 class WebAppTests(unittest.TestCase):
     @classmethod
@@ -77,6 +80,14 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(json.loads(body)["response"], "reply: hello")
         self.assertIn((session, "neutral"), self.controller.histories)
 
+    def test_stop_generation_endpoint_requests_safe_cancel(self):
+        session = "session-stop"
+        self.controller.state = "Generating"
+        status, _, body = self.request("POST", "/api/stop", {"session_id": session})
+        self.assertEqual(status, 202)
+        self.assertTrue(json.loads(body)["stop_requested"])
+        self.controller.state = "Ready"
+
     def test_rejects_non_local_host_header(self):
         status, _, _ = self.request("GET", "/api/status", host="example.com")
         self.assertEqual(status, 403)
@@ -130,6 +141,10 @@ class WebAppTests(unittest.TestCase):
         self.assertIn('value="neutral"', combined)
         self.assertIn("Base origin:", combined)
         self.assertIn("/api/model", combined)
+        self.assertIn("/api/stop", combined)
+        self.assertIn("Model Info", combined)
+        self.assertIn("Personal AI Companion", combined)
+        self.assertIn("composer-slots", combined)
 
 
 if __name__ == "__main__":
