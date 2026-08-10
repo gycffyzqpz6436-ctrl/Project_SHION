@@ -26,6 +26,9 @@ Create an AI assistant that feels alive—not just a chatbot.
 - ⏳ Voice
 - ⏳ Desktop Assistant
 
+Detailed future development phases, subsystem boundaries, and Owner review gates
+are recorded in the [Project SHION Future Roadmap](docs/roadmap/project_shion_future_roadmap.md).
+
 ---
 
 *"Project SHION is not just a character project. It is an attempt to create a digital companion."*

@@ -1,8 +1,8 @@
 # 💜 Project SHION Design Decisions
 
-Version: 1.4.0
+Version: 1.5.0
 
-Last Updated: 2026-08-08
+Last Updated: 2026-08-10
 
 ---
 
@@ -469,14 +469,40 @@ Generation and review prompts must evaluate conversational intent before usefuln
 
 ---
 
+## DD-017
+
+Title
+
+Personal Companion Subsystem and Owner Review Policy
+
+Status
+
+Accepted
+
+Date
+
+2026-08-10
+
+Context
+
+Project SHION now has a runtime, orchestrator, conversation-model abstraction, and boundaries for future memory and tools. Planned conversation, memory, knowledge, vision, image generation, voice, presentation, and local capabilities require a stable responsibility and approval model. Previous experimental-model work also demonstrated that distribution security and runtime success do not establish conversational or visual suitability.
+
+Decision
+
+- Project SHION develops as a Personal AI Companion composed of replaceable subsystems. The Conversation Model owns conversation, reasoning, and personality but does not directly own memory storage, crawling, vision, image generation, voice, Live2D, filesystem, shell, or network capabilities.
+- Multimodal and privileged capabilities connect through explicit tool or service interfaces behind security validation and remain default-deny.
+- Conversation-model exploration is complete for the current development cycle. The Gemma 4 family is the working conversation foundation for continued SHION dataset, LoRA, evaluation, and Owner manual evaluation. This does not permanently prohibit a future Owner-approved model review.
+- Image models require separate security, runtime, short-generation, and Owner visual-quality gates. Security/runtime PASS does not imply SHION suitability.
+- Animagine XL 4.0 Opt is recorded as Security / Runtime PASS, Owner Visual Quality REJECT, and not adopted as the official SHION image model.
+- Dataset-candidate export is distinct from ordinary conversation export. A candidate requires Owner review before Golden promotion.
+- Conversation logs and generated private artifacts are not automatically treated as training data, persisted, committed, pushed, or transmitted externally.
+
+Consequences
+
+Subsystems can be replaced without rebuilding SHION as a whole. New capabilities require explicit interfaces, security policy, lifecycle controls, and separate Owner authorization. Evaluation reports must distinguish distribution/security, runtime, and qualitative suitability. The detailed sequence and exit gates are maintained in `docs/roadmap/project_shion_future_roadmap.md`; implementation structure remains maintained in `docs/architecture/shion_future_architecture.md`.
+
+---
+
 # Future Decisions
 
-Add new entries using sequential IDs.
-
-Example
-
-DD-015
-
-DD-016
-
-DD-017
+Add new entries using sequential IDs. The next available identifier is `DD-018`.

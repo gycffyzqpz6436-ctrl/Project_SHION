@@ -2,6 +2,10 @@
 
 Status: Phase 1 foundation (2026-08-09)
 
+This document owns **how the system is structured**. Planned features, sequencing,
+and approval gates are owned by the
+[Project SHION Future Roadmap](../roadmap/project_shion_future_roadmap.md).
+
 ## Design boundary
 
 SHION is an application-level personal companion. A conversation LLM is one
@@ -138,7 +142,7 @@ session-scoped cancellation event. A Transformers stopping criterion observes it
 between token steps, returns the partial text, and leaves the model loaded so the
 next turn can continue. Stop does not kill a process or unload model weights.
 
-## Future capability roadmap
+## Future capability architecture overview
 
 - Vision: validated image upload -> vision adapter -> structured observation ->
   orchestrator -> conversation response.
