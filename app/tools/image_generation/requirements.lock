@@ -1,0 +1,10 @@
+# Direct runtime package versions validated on RTX 5070 / CUDA 12.8 on 2026-08-10.
+# Torch is installed from https://download.pytorch.org/whl/cu128 first.
+torch==2.11.0+cu128
+diffusers==0.39.0
+transformers==5.15.0
+accelerate==1.14.0
+huggingface-hub==1.27.0
+safetensors==0.8.0
+pillow==12.3.0
+psutil==7.2.2

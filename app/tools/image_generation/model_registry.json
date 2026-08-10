@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "active_model": null,
+  "models": {
+    "animagine-xl-4.0-opt": {
+      "status": "installed_experimental_not_ui_enabled",
+      "repository": "cagliostrolab/animagine-xl-4.0",
+      "revision": "2b7c1b397761bf5bd3cc42e5b39ec99314a75a96",
+      "weight": "animagine-xl-4.0-opt.safetensors",
+      "weight_size_bytes": 6938350040,
+      "weight_sha256": "6327eca98bfb6538dd7a4edce22484a1bbc57a8cff6b11d075d40da1afb847ac",
+      "hf_blob_id": "712da5255f961c3e0c10894af0c042fbacb7ea98",
+      "license": "CreativeML Open RAIL++-M",
+      "parent": "stabilityai/stable-diffusion-xl-base-1.0",
+      "prompt_mode": "danbooru_tags",
+      "trust_remote_code": false,
+      "local_path": "D:/AI/Project_SHION/models/image/animagine-xl-4.0-opt"
+    }
+  }
+}

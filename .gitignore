@@ -234,3 +234,8 @@ runs/
 app/logs/
 app/cache/
 app/sessions/
+
+# SHION image-generation runtime (weights and artifacts stay outside Git)
+app/tools/image_generation/.venv/
+app/tools/image_generation/cache/
+image_output/
