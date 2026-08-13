@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "preset_name": "SHION Default",
+  "status": "approved",
+  "approved": true,
+  "owner_approved": true,
+  "created_at": "2026-08-13T00:00:00+09:00",
+  "voice_model": "nene_v3_candidate",
+  "style": "Bright",
+  "style_weight": 1.0,
+  "length": 1.0,
+  "pitch_scale": 1.0,
+  "intonation_scale": 1.0,
+  "sdp_ratio": 0.2,
+  "noise": 0.6,
+  "noise_w": 0.8,
+  "assist_text": "",
+  "assist_text_weight": 0.7
+}

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "external_root": "D:\\AI\\Project_SHION",
+  "runtime_source": "D:\\AI\\Project_SHION\\runtime\\voice\\Style-Bert-VITS2-2.7.0",
+  "python": "D:\\AI\\Project_SHION\\runtime\\voice-venv\\py310-cu128\\Scripts\\python.exe",
+  "output_dir": "D:\\AI\\Project_SHION\\artifacts\\voice\\prototype-v0.1",
+  "model": {
+    "name": "jvnv-F2-jp",
+    "checkpoint": "D:\\AI\\Project_SHION\\models\\voice\\jvnv\\jvnv-F2-jp\\jvnv-F2_e166_s20000.safetensors",
+    "config": "D:\\AI\\Project_SHION\\models\\voice\\jvnv\\jvnv-F2-jp\\config.json",
+    "style_vectors": "D:\\AI\\Project_SHION\\models\\voice\\jvnv\\jvnv-F2-jp\\style_vectors.npy"
+  },
+  "generation": {
+    "device": "cuda",
+    "language": "JP",
+    "style": "Happy",
+    "style_weight": 0.65,
+    "length": 0.95,
+    "pitch_scale": 1.0,
+    "intonation_scale": 1.0,
+    "sdp_ratio": 0.2,
+    "noise": 0.6,
+    "noise_w": 0.8
+  }
+}

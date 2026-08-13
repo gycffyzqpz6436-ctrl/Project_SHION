@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "character_id": "shion",
+  "display_name": "SHION",
+  "display_name_ja": "紫苑",
+  "renderer": {
+    "type": "static_2d",
+    "asset_set": "official_static_2d_v1",
+    "manifest": "official/static_2d/asset_manifest.json"
+  },
+  "theme": {
+    "primary": "deep-purple",
+    "accent": "violet-glow"
+  },
+  "default_model": "gemma4_12b_heretic_ja_v2_manual",
+  "default_voice": {
+    "preset_id": "SHION Default",
+    "model_id": "nene_v3_candidate",
+    "style": "Bright"
+  }
+}

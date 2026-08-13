@@ -309,6 +309,30 @@ confusing chat history, fabricated memory, or unreviewed persistent data.
 Exit criterion: voice and presentation can be disabled independently and cannot
 grant the Conversation Model direct device or tool control.
 
+### Future — Desktop SHION Companion
+
+After the Dashboard, Conversation, Voice and Character contracts are stable,
+evaluate a separate Windows-resident Companion client. Candidate surface:
+
+- always-on-top official 2D Avatar window;
+- Mini Chat and Nene Voice;
+- local notifications;
+- explicit SHION Dashboard launch;
+- replaceable renderer boundary for a later 3D Avatar.
+
+This client is distinct from the Dashboard's Web Floating Assistant. Only the
+Conversation, Voice and Character backends may be shared; window lifecycle,
+presentation state, permissions and capture behavior remain client-owned.
+
+Active application, window title, screen capture and selected-text access each
+require an independent Owner permission and default to OFF. Implementation must
+define protected-content exclusions, visible capture indicators, revocation,
+retention, IPC authentication, startup/update behavior and tests proving that
+secrets and authentication screens are not unconditionally collected.
+
+Entry criterion: a separate Owner-approved Companion architecture and threat
+model. This roadmap item does not authorize implementation in Phase 1.
+
 ## Decision and review rules
 
 - Owner qualitative review can reject a model that passes security and runtime.

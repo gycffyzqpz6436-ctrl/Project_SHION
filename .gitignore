@@ -234,3 +234,18 @@ runs/
 app/logs/
 app/cache/
 app/sessions/
+
+# Voice Prototype local artifacts (runtime/models live on D: and are never versioned)
+voice/output/
+voice/models/
+voice/cache/
+voice/.venv/
+voice/**/*.wav
+
+# Private SHION runtime data (canonical location is SHION_DATA_ROOT on D:)
+*.db
+*.db-wal
+*.db-shm
+app/data/
+app/artifacts/
+private_exports/

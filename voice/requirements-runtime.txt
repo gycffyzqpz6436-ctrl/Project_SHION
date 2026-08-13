@@ -1,0 +1,9 @@
+# Installed only in D:\AI\Project_SHION\runtime\voice-venv\py310-cu128.
+# Required because Style-Bert-VITS2 passes device_map="cuda" while loading
+# the Japanese BERT model through Transformers.
+accelerate==1.2.1
+
+# Runtime compatibility pins recorded for reproducibility.
+torch==2.11.0+cu128
+torchaudio==2.11.0+cu128
+transformers==4.48.3

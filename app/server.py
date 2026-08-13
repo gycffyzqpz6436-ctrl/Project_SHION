@@ -5,12 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
+import subprocess
 import sys
 import traceback
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -19,29 +21,71 @@ if str(ROOT) not in sys.path:
 from app.core.shion_runtime import ShionRuntime  # noqa: E402
 from app.models.registry import ModelRegistry  # noqa: E402
 from app.runtime.model_runtime import LocalModelRuntime  # noqa: E402
+from app.storage.conversation_db import ConversationRepository  # noqa: E402
+from app.storage.paths import StoragePaths  # noqa: E402
+from app.voice.service import VoiceServiceClient, VoiceUnavailable  # noqa: E402
 
 
 STATIC = Path(__file__).resolve().parent / "static"
 REGISTRY_PATH = Path(__file__).resolve().parent / "model_registry.json"
 MAX_BODY_BYTES = 128 * 1024
 LOG = logging.getLogger("shion_web")
+SAFE_DIAGNOSTIC_HEADERS = (
+    "Host", "Origin", "Referer", "Forwarded", "X-Forwarded-For",
+    "X-Forwarded-Host", "X-Forwarded-Proto", "Tailscale-User-Login",
+    "Tailscale-User-Name", "Tailscale-User-Profile-Pic", "Tailscale-App-Capabilities",
+)
+
+
+def _hostname(value: str) -> str:
+    try:
+        parsed = urlparse(value if "://" in value else f"//{value}")
+        return (parsed.hostname or "").rstrip(".").lower()
+    except ValueError:
+        return ""
+
+
+def discover_tailscale_hosts() -> set[str]:
+    """Return this node's exact Serve hostnames; fail closed when unavailable."""
+    hosts: set[str] = set()
+    try:
+        result = subprocess.run(
+            ["tailscale", "status", "--json"], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=5, check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        self_node = json.loads(result.stdout).get("Self", {})
+        for value in (self_node.get("HostName"), self_node.get("DNSName")):
+            host = _hostname(str(value or ""))
+            if host:
+                hosts.add(host)
+    except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError):
+        LOG.warning("Tailscale hostname discovery unavailable; Tailscale Serve access disabled")
+    extra = os.environ.get("SHION_TAILSCALE_HOSTS", "")
+    hosts.update(host for host in (_hostname(item.strip()) for item in extra.split(",")) if host)
+    return hosts
 
 
 class RuntimeController(ShionRuntime):
     """Compatibility facade for the original server import path."""
 
-    def __init__(self, registry: dict | None = None) -> None:
+    def __init__(self, registry: dict | None = None, conversations: ConversationRepository | None = None) -> None:
         model_registry = (
             ModelRegistry(registry) if registry is not None else ModelRegistry.from_file(REGISTRY_PATH)
         )
         super().__init__(
             model_registry,
             model_factory=lambda common, alias, spec, adapter: LocalModelRuntime(common, alias, spec, adapter),
+            conversations=conversations,
         )
 
 
 class ShionServer(ThreadingHTTPServer):
+    # Refuse a duplicate Windows bind before a second process allocates a model.
+    allow_reuse_address = False
     controller: RuntimeController
+    tailscale_hosts: frozenset[str]
+    voice: VoiceServiceClient | None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -50,9 +94,41 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:
         LOG.info("%s - %s", self.client_address[0], fmt % args)
 
+    def _safe_request_diagnostics(self) -> dict[str, object]:
+        return {
+            "client_address": self.client_address[0],
+            "headers": {name: self.headers.get(name, "")[:512] for name in SAFE_DIAGNOSTIC_HEADERS if self.headers.get(name)},
+        }
+
+    def _origin_matches(self, request_authority: str) -> bool:
+        for name in ("Origin", "Referer"):
+            value = self.headers.get(name)
+            if value and urlparse(value).netloc.lower() != request_authority:
+                return False
+        return True
+
+    def _access_kind(self) -> str | None:
+        if self.client_address[0] != "127.0.0.1":
+            return None
+        request_authority = self.headers.get("Host", "").strip().lower()
+        host = _hostname(request_authority)
+        if host in {"127.0.0.1", "localhost"}:
+            return "localhost" if self._origin_matches(request_authority) else None
+        tailscale_identity = bool(
+            self.headers.get("Tailscale-User-Login") or self.headers.get("Tailscale-App-Capabilities")
+        )
+        if host in self.server.tailscale_hosts and tailscale_identity and self._origin_matches(request_authority):
+            return "tailscale-serve"
+        return None
+
     def _allowed_host(self) -> bool:
-        host = self.headers.get("Host", "").split(":", 1)[0].lower()
-        return host in {"127.0.0.1", "localhost"} and self.client_address[0] == "127.0.0.1"
+        access_kind = self._access_kind()
+        allowed = access_kind is not None
+        if access_kind == "tailscale-serve":
+            LOG.info("Accepted Tailscale Serve request boundary=%s", json.dumps(self._safe_request_diagnostics(), ensure_ascii=False))
+        if not allowed:
+            LOG.warning("Rejected request boundary=%s", json.dumps(self._safe_request_diagnostics(), ensure_ascii=False))
+        return allowed
 
     def _json(self, status: int, payload: dict) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -78,7 +154,10 @@ class Handler(BaseHTTPRequestHandler):
         return payload
 
     def _static(self, name: str, content_type: str) -> None:
-        path = STATIC / name
+        path = (STATIC / name).resolve()
+        if STATIC.resolve() not in path.parents or not path.is_file():
+            self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+            return
         body = path.read_bytes()
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
@@ -95,7 +174,40 @@ class Handler(BaseHTTPRequestHandler):
             return
         path = urlparse(self.path).path
         if path == "/api/status":
-            self._json(HTTPStatus.OK, self.server.controller.status())
+            status = self.server.controller.status()
+            status["voice"] = self.server.voice.status() if self.server.voice else {"state": "UNAVAILABLE", "error": "Persistent history unavailable"}
+            self._json(HTTPStatus.OK, status)
+        elif path == "/api/voice/meta":
+            self._json(HTTPStatus.OK, self.server.voice.metadata(True) if self.server.voice else {"state": "UNAVAILABLE", "approved_presets": [], "developer_models": {}})
+        elif path.startswith("/api/voice/artifacts/"):
+            if not self.server.voice: self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Voice unavailable"}); return
+            artifact_id = path.removeprefix("/api/voice/artifacts/")
+            if not artifact_id.isascii() or len(artifact_id) != 36: self._json(HTTPStatus.NOT_FOUND, {"error": "artifact not found"}); return
+            try: target, _ = self.server.voice.artifact(artifact_id)
+            except (KeyError, FileNotFoundError): self._json(HTTPStatus.NOT_FOUND, {"error": "artifact not found"}); return
+            size = target.stat().st_size; start, end = 0, size - 1; response_status = HTTPStatus.OK
+            requested = self.headers.get("Range")
+            if requested and requested.startswith("bytes="):
+                try:
+                    left, right = requested[6:].split("-", 1); start = int(left or 0); end = min(int(right) if right else end, end)
+                    if start > end: raise ValueError
+                    response_status = HTTPStatus.PARTIAL_CONTENT
+                except ValueError: self.send_error(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE); return
+            with target.open("rb") as handle: handle.seek(start); body = handle.read(end - start + 1)
+            self.send_response(response_status); self.send_header("Content-Type", "audio/wav"); self.send_header("Accept-Ranges", "bytes")
+            if response_status == HTTPStatus.PARTIAL_CONTENT: self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.send_header("Content-Length", str(len(body))); self.send_header("Cache-Control", "private, no-store"); self.send_header("X-Content-Type-Options", "nosniff"); self.end_headers(); self.wfile.write(body)
+        elif path == "/api/sessions":
+            repository = self.server.controller.conversations
+            if not repository: self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "persistent history unavailable"}); return
+            query = parse_qs(urlparse(self.path).query).get("q", [""])[0]
+            self._json(HTTPStatus.OK, {"sessions": repository.list_sessions(query=query)})
+        elif path.startswith("/api/sessions/"):
+            repository = self.server.controller.conversations
+            if not repository: self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "persistent history unavailable"}); return
+            session_id = path.removeprefix("/api/sessions/")
+            if not session_id.isascii() or not 8 <= len(session_id) <= 80: self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid session ID"}); return
+            self._json(HTTPStatus.OK, repository.load_session(session_id))
         elif path in {"/", "/index.html"}:
             self._static("index.html", "text/html; charset=utf-8")
         elif path == "/app.js":
@@ -104,6 +216,14 @@ class Handler(BaseHTTPRequestHandler):
             self._static("styles.css", "text/css; charset=utf-8")
         elif path == "/assets/shion/avatar.svg":
             self._static("assets/shion/avatar.svg", "image/svg+xml")
+        elif path.startswith("/assets/characters/"):
+            relative = path.removeprefix("/")
+            suffix = Path(relative).suffix.lower()
+            content_types = {".png": "image/png", ".json": "application/json; charset=utf-8"}
+            if suffix not in content_types:
+                self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                return
+            self._static(relative, content_types[suffix])
         else:
             self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
@@ -123,6 +243,73 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/api/reset":
                 self.server.controller.reset(session_id)
+                self._json(HTTPStatus.OK, {"ok": True})
+                return
+            if path == "/api/sessions":
+                mode = payload.get("mode", "minimal")
+                if mode not in {"minimal", "neutral", "canonical"}: raise ValueError("invalid mode")
+                runtime_status = self.server.controller.runtime.status() if self.server.controller.runtime else {}
+                result = self.server.controller.create_persistent_session(session_id, mode, runtime_status.get("repo_id"), runtime_status.get("revision"))
+                self._json(HTTPStatus.CREATED, result)
+                return
+            if path == "/api/sessions/rename":
+                repository = self.server.controller.conversations
+                if not repository: raise RuntimeError("persistent history unavailable")
+                title = payload.get("title")
+                if not isinstance(title, str): raise ValueError("title required")
+                from datetime import datetime, timezone
+                repository.rename_session(session_id, title, datetime.now(timezone.utc).isoformat(timespec="seconds"))
+                self._json(HTTPStatus.OK, {"ok": True, "title": title.strip()})
+                return
+            if path == "/api/sessions/archive":
+                repository = self.server.controller.conversations
+                if not repository: raise RuntimeError("persistent history unavailable")
+                from datetime import datetime, timezone
+                repository.archive_session(session_id, True, datetime.now(timezone.utc).isoformat(timespec="seconds"))
+                self._json(HTTPStatus.OK, {"ok": True, "archived": True})
+                return
+            if path == "/api/messages/favorite":
+                repository = self.server.controller.conversations
+                message_id, favorite = payload.get("message_id"), payload.get("favorite")
+                if not repository or not isinstance(message_id, str) or not isinstance(favorite, bool): raise ValueError("invalid favorite")
+                from datetime import datetime, timezone
+                repository.set_favorite(message_id, favorite, datetime.now(timezone.utc).isoformat(timespec="seconds"))
+                self._json(HTTPStatus.OK, {"ok": True, "favorite": favorite})
+                return
+            if path == "/api/messages/feedback":
+                repository = self.server.controller.conversations
+                message_id, rating = payload.get("message_id"), payload.get("rating")
+                if not repository or not isinstance(message_id, str) or rating not in {None, "good", "bad"}: raise ValueError("invalid feedback")
+                from datetime import datetime, timezone
+                repository.set_feedback(message_id, rating, datetime.now(timezone.utc).isoformat(timespec="seconds"))
+                self._json(HTTPStatus.OK, {"ok": True, "rating": rating})
+                return
+            if path == "/api/voice/generate":
+                if not self.server.voice: raise VoiceUnavailable("Voice unavailable")
+                message_id, version = payload.get("message_id"), payload.get("response_version", 1)
+                if not isinstance(message_id, str) or not message_id.isascii() or not isinstance(version, int) or version < 1: raise ValueError("invalid Voice source")
+                preset = payload.get("preset_id"); developer_model = payload.get("developer_model"); developer_style = payload.get("developer_style")
+                if preset is not None and not isinstance(preset, str): raise ValueError("invalid preset")
+                if developer_model is not None and (not isinstance(developer_model, str) or not developer_model.isascii()): raise ValueError("invalid developer model")
+                if developer_style is not None and (not isinstance(developer_style, str) or len(developer_style) > 64): raise ValueError("invalid developer style")
+                try:
+                    result = self.server.voice.generate(message_id, version, preset, developer_model, developer_style, bool(payload.get("retry")))
+                except ValueError as error:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)}); return
+                self._json(HTTPStatus.CREATED, result); return
+            if path == "/api/regenerate":
+                mode = payload.get("mode")
+                if mode not in {"minimal", "neutral", "canonical"}:
+                    raise ValueError("invalid mode")
+                message_id = payload.get("message_id")
+                if message_id is not None and (not isinstance(message_id, str) or not message_id.isascii()): raise ValueError("invalid message_id")
+                self._json(HTTPStatus.OK, self.server.controller.regenerate(session_id, mode, message_id))
+                return
+            if path == "/api/response/select":
+                mode, response = payload.get("mode"), payload.get("response")
+                if mode not in {"minimal", "neutral", "canonical"} or not isinstance(response, str):
+                    raise ValueError("invalid response selection")
+                self.server.controller.select_response(session_id, mode, response)
                 self._json(HTTPStatus.OK, {"ok": True})
                 return
             if path == "/api/model":
@@ -145,9 +332,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.OK, result)
         except OverflowError as error:
             self._json(HTTPStatus.CONFLICT, {"error": str(error)})
+        except VoiceUnavailable as error:
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": f"Voice unavailable: {error}"})
         except RuntimeError:
             self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "モデルはまだ準備中です。"})
-        except (ValueError, json.JSONDecodeError):
+        except (ValueError, json.JSONDecodeError) as error:
+            LOG.warning("Request validation failed: %s", error)
             self._json(HTTPStatus.BAD_REQUEST, {"error": "リクエストを確認してください。"})
         except Exception:
             LOG.error("Request failed\n%s", traceback.format_exc())
@@ -159,34 +349,53 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="127.0.0.1", choices=["127.0.0.1"])
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--common", type=Path, default=Path("training/configs/common.yaml"))
-    parser.add_argument("--model", default="ministral3_official", help="Server-side allowlisted model alias")
+    parser.add_argument("--model", default="gemma4_12b_heretic_ja_v2_manual", help="Server-side allowlisted model alias")
     parser.add_argument("--adapter", type=Path)
     return parser
 
 
-def create_server(host: str, port: int, controller: RuntimeController, common_path: Path = Path("training/configs/common.yaml")) -> ShionServer:
+def create_server(host: str, port: int, controller: RuntimeController, common_path: Path = Path("training/configs/common.yaml"), tailscale_hosts: set[str] | None = None, voice: VoiceServiceClient | None = None) -> ShionServer:
     if host != "127.0.0.1":
         raise ValueError("only 127.0.0.1 is permitted")
     server = ShionServer((host, port), Handler)
     server.controller = controller
     server.common_path = common_path
+    server.tailscale_hosts = frozenset(discover_tailscale_hosts() if tailscale_hosts is None else tailscale_hosts)
+    server.voice = voice
     return server
 
 
 def main() -> None:
     args = build_parser().parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    controller = RuntimeController()
-    server = create_server(args.host, args.port, controller, args.common)
+    paths = StoragePaths.resolve()
+    paths.create_runtime_dirs()
+    conversations = ConversationRepository(paths.conversation_db, enabled=True)
+    try:
+        conversations.migrate()
+        controller = RuntimeController(conversations=conversations)
+    except Exception as error:
+        LOG.error("Conversation DB unavailable; explicit ephemeral fallback enabled: %s", error)
+        controller = RuntimeController()
+        controller.persistence_error = str(error)
+    try:
+        # Bind before model load: the OS lock is race-safe and prevents a duplicate
+        # process from allocating model RAM only to fail on port 8765 afterward.
+        voice = VoiceServiceClient(paths.root, ROOT, conversations) if controller.conversations else None
+        server = create_server(args.host, args.port, controller, args.common, voice=voice)
+    except OSError as error:
+        raise SystemExit(f"SHION server startup rejected before model load: {error}") from error
     controller.load(args.common, args.model, args.adapter)
     LOG.info("SHION Web Chat: http://%s:%s", args.host, args.port)
-    LOG.info("Localhost only; press Ctrl+C to stop")
+    LOG.info("Loopback bind enforced; allowed Tailscale Serve hosts: %s", sorted(server.tailscale_hosts))
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         LOG.info("Stopping")
     finally:
         server.server_close()
+        if server.voice: server.voice.close()
+        controller.close()
 
 
 if __name__ == "__main__":

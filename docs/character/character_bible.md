@@ -8,6 +8,20 @@ Last Updated: 2026-08-04
 
 ---
 
+## Official presentation asset
+
+The Owner-approved visual presentation set is `official_static_2d_v1` version
+`1.0.0`. Avatar, Panel and Master roles are defined by its manifest and must not
+be interchanged for convenience. This registration records presentation assets
+only; no personality, relationship, speech or body canon is inferred from the
+images.
+
+Static 2D is the current renderer implementation. It remains replaceable by
+Live2D or 3D through the CharacterRenderer boundary without changing SHION's
+canonical character semantics.
+
+---
+
 ## Purpose
 
 This Character Bible is the high-level overview and documentation index for SHION／紫苑.

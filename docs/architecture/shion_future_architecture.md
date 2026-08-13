@@ -135,6 +135,14 @@ by a portrait while keeping the message/header component. A later Avatar adapter
 can map SHION state to portrait expressions or Live2D motions; it must not be
 coupled to the conversation model class.
 
+The Workspace now treats the SVG as a missing-asset fallback. Official Character
+assets live under a versioned Character root and resolve through a profile plus
+manifest. SHION's current Owner-approved registration is
+`official_static_2d_v1`: Avatar, Panel and Master remain separate semantic roles.
+`CharacterRenderer` consumes an asset set and bounded presentation state, so a
+future Live2D/3D renderer or another Character profile does not require changes
+to Conversation or Voice backends.
+
 ## Stop generation
 
 The browser changes Send to Stop while a request is generating. `/api/stop` sets a
@@ -155,6 +163,40 @@ next turn can continue. Stop does not kill a process or unload model weights.
 - Smartphone: keep UI responsive and separate network exposure from UI/runtime.
 - Live2D: presentation adapter consumes explicit SHION expression/state events and
   never receives unrestricted tool authority.
+
+### Desktop Companion client boundary
+
+A future Desktop SHION Companion is an independent Windows client and process.
+It is not the browser-based Floating Assistant and must not depend on Dashboard
+DOM state or browser storage. Both presentation surfaces may share only stable
+local contracts backed by Conversation, Voice and Character services.
+
+```mermaid
+flowchart LR
+    WEB["SHION Dashboard"] --> FLOAT["Web Floating Assistant"]
+    FLOAT --> API["Local SHION application API"]
+    DESK["Desktop Companion"] --> API
+    DESK --> PB["Owner permission broker (default OFF)"]
+    DESK --> RI["CharacterRenderer interface"]
+    RI --> R2["Official 2D renderer"]
+    RI -. future replacement .-> R3["3D renderer"]
+    API --> CONV["Conversation backend"]
+    API --> VOICE["Voice backend"]
+    API --> CHAR["Character state backend"]
+```
+
+The Companion may later provide an always-on-top Avatar window, Mini Chat, Nene
+Voice, notifications and an explicit Dashboard launcher. Desktop observation is
+not implicit in those features. Active application, window title, screen capture
+and selected-text access are separate Owner permissions, default OFF, mediated by
+the broker and revocable independently. Protected authentication and secret
+surfaces require deny/redaction rules, visible capture indication and bounded
+retention. The renderer receives presentation state only and has no desktop or
+tool authority.
+
+This is an architecture extension point only. Phase 1 adds no executable,
+background agent, global hook, screen capture, UI Automation, clipboard monitor,
+startup task or Windows permission request.
 
 Network stages are intentionally separate:
 

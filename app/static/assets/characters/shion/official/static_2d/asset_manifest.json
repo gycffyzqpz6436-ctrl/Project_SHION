@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "character_id": "shion",
+  "asset_set_id": "official_static_2d_v1",
+  "version": "1.0.0",
+  "status": "official",
+  "owner_approved": true,
+  "imported_at": "2026-08-14",
+  "license_class": "project_public_character_asset",
+  "source_policy": "Owner-provided official files; originals preserved byte-for-byte",
+  "assets": {
+    "avatar": {
+      "asset_id": "shion_official_avatar_v1",
+      "role": "avatar",
+      "path": "shion_avatar.png",
+      "width": 1254,
+      "height": 1254,
+      "color_mode": "RGBA",
+      "alpha": true,
+      "sha256": "eaa0affd14300afb7ed677c316103de294f1f40e9e8efaf3ab514c901973d666",
+      "usage": ["chat_message", "workspace_header", "character_selector", "floating_assistant"]
+    },
+    "panel": {
+      "asset_id": "shion_official_panel_v1",
+      "role": "panel",
+      "path": "shion_panel.png",
+      "width": 1024,
+      "height": 1536,
+      "color_mode": "RGBA",
+      "alpha": true,
+      "sha256": "eb8bb47a634f87552a672779f001cd431b4d5651620ef2872b0e047670d95633",
+      "usage": ["desktop_monitor_panel", "mobile_character_sheet", "future_assistant_overlay"]
+    },
+    "master": {
+      "asset_id": "shion_official_master_v1",
+      "role": "master",
+      "path": "shion_official_2d_master.png",
+      "width": 1024,
+      "height": 1536,
+      "color_mode": "RGBA",
+      "alpha": true,
+      "sha256": "bcbc1f275acc94fa80c7fb91145d037dc29f903d708cb453e5bf04138e9940ae",
+      "usage": ["characters_page", "shion_room", "design_reference", "future_live2d_3d_reference"]
+    }
+  },
+  "presentation_states": {
+    "idle": "panel",
+    "thinking": "panel",
+    "generating": "panel",
+    "speaking": "panel",
+    "happy": "panel",
+    "playful": "panel",
+    "concerned": "panel"
+  },
+  "derivative_policy": {
+    "preserve_originals": true,
+    "upscales_are_derived_assets": true,
+    "ai_face_or_outfit_regeneration": false,
+    "owner_approval_required_for_replacement": true
+  }
+}

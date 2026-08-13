@@ -119,6 +119,30 @@ Official assets should be used consistently across:
 - Website
 - Promotional artwork
 
+## Official Static 2D Asset Set
+
+- Asset set: `official_static_2d_v1`
+- Version: `1.0.0`
+- Status: Official
+- Owner-approved: **YES**
+- Manifest: `app/static/assets/characters/shion/official/static_2d/asset_manifest.json`
+
+Roles are fixed: `shion_avatar.png` is the uncropped source for Chat messages,
+Workspace headers, Character selectors and the future Floating Assistant;
+`shion_panel.png` is the portrait used by the Desktop Monitor Panel, Mobile
+Character sheet and future overlay; `shion_official_2d_master.png` is the design
+reference for Characters, SHION Room and later Live2D/3D production. CSS may
+frame the avatar, but the official source file is not permanently circle-cropped.
+
+The files are public Project SHION character assets and are separate from private
+runtime data such as paid Voice models, licenses, WAV artifacts and Conversation
+databases. Replacing an official file or promoting a new asset-set version
+requires Owner approval.
+
+The original master is retained unchanged. Any future upscale is a separately
+identified derived asset; it must not regenerate or alter SHION's face, outfit or
+identity.
+
 ---
 
 # Prohibited Usage
