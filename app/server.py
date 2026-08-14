@@ -23,6 +23,7 @@ from app.core.shion_runtime import ShionRuntime  # noqa: E402
 from app.core.gpu_resource_gate import (GpuResourceGate, ResourceGateCancelled,
                                         ResourceGateFull, ResourceGateTimeout)  # noqa: E402
 from app.characters.registry import CharacterRegistry  # noqa: E402
+from app.memory.service import SensitiveMemoryError  # noqa: E402
 from app.models.registry import ModelRegistry  # noqa: E402
 from app.runtime.model_runtime import LocalModelRuntime  # noqa: E402
 from app.storage.conversation_db import ConversationRepository  # noqa: E402
@@ -222,6 +223,18 @@ class Handler(BaseHTTPRequestHandler):
                 "runtime": self.server.controller.status(), "voice": self.server.voice.status() if self.server.voice else {"state": "UNAVAILABLE"}})
         elif path == "/api/system":
             self._json(HTTPStatus.OK, self.server.system_snapshot())
+        elif path in {"/api/memory", "/api/memory/candidates"}:
+            memory = self.server.controller.orchestrator.long_term_memory
+            if not memory.available: self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Memory unavailable"}); return
+            query = parse_qs(urlparse(self.path).query)
+            requested = "candidate" if path.endswith("/candidates") else query.get("status", [None])[0]
+            self._json(HTTPStatus.OK, {"memories": memory.list(requested, query.get("character_id", [None])[0]),
+                "automatic_promotion": False, "last_error": memory.last_error})
+        elif path.startswith("/api/memory/"):
+            memory = self.server.controller.orchestrator.long_term_memory
+            if not memory.available: self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Memory unavailable"}); return
+            try: self._json(HTTPStatus.OK, memory.get(path.removeprefix("/api/memory/")))
+            except KeyError: self._json(HTTPStatus.NOT_FOUND, {"error": "Memory not found"})
         elif path.startswith("/api/sessions/"):
             repository = self.server.controller.conversations
             if not repository: self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "persistent history unavailable"}); return
@@ -311,6 +324,20 @@ class Handler(BaseHTTPRequestHandler):
                 repository.set_feedback(message_id, rating, datetime.now(timezone.utc).isoformat(timespec="seconds"))
                 self._json(HTTPStatus.OK, {"ok": True, "rating": rating})
                 return
+            if path == "/api/memory":
+                memory = self.server.controller.orchestrator.long_term_memory
+                if not memory.available: raise RuntimeError("Memory unavailable")
+                allowed = {"content", "type", "scope", "character_id", "expires_at", "importance", "pinned", "metadata", "supersedes"}
+                owner_payload = {key: value for key, value in payload.items() if key in allowed}
+                self._json(HTTPStatus.CREATED, memory.create(owner_payload, source_author="owner")); return
+            if path.startswith("/api/memory/"):
+                memory = self.server.controller.orchestrator.long_term_memory
+                if not memory.available: raise RuntimeError("Memory unavailable")
+                suffix = path.removeprefix("/api/memory/")
+                if "/" not in suffix: self._json(HTTPStatus.NOT_FOUND, {"error": "not found"}); return
+                memory_id, action = suffix.split("/", 1)
+                if action not in {"approve", "archive", "restore", "reject"}: self._json(HTTPStatus.NOT_FOUND, {"error": "not found"}); return
+                self._json(HTTPStatus.OK, memory.transition(memory_id, action)); return
             if path == "/api/voice/generate":
                 if not self.server.voice: raise VoiceUnavailable("Voice unavailable")
                 message_id, version = payload.get("message_id"), payload.get("response_version", 1)
@@ -386,6 +413,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.CONFLICT, {"error": str(error), "state": "CANCELLED"})
         except VoiceUnavailable as error:
             self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": f"Voice unavailable: {error}"})
+        except KeyError:
+            self._json(HTTPStatus.NOT_FOUND, {"error": "Record not found"})
+        except SensitiveMemoryError as error:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
         except RuntimeError:
             self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "モデルはまだ準備中です。"})
         except (ValueError, json.JSONDecodeError) as error:
@@ -394,6 +425,39 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             LOG.error("Request failed\n%s", traceback.format_exc())
             self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "モデルの応答生成に失敗しました。"})
+
+
+    def do_PATCH(self) -> None:
+        if not self._allowed_host(): self._json(HTTPStatus.FORBIDDEN, {"error": "localhost access only"}); return
+        try:
+            payload = self._read_json(); session_id = payload.pop("session_id", None)
+            if not isinstance(session_id, str) or not 8 <= len(session_id) <= 80 or not session_id.isascii(): raise ValueError("invalid session_id")
+            path = urlparse(self.path).path
+            if not path.startswith("/api/memory/"): self._json(HTTPStatus.NOT_FOUND, {"error": "not found"}); return
+            memory = self.server.controller.orchestrator.long_term_memory
+            if not memory.available: raise RuntimeError("Memory unavailable")
+            self._json(HTTPStatus.OK, memory.update(path.removeprefix("/api/memory/"), payload))
+        except KeyError: self._json(HTTPStatus.NOT_FOUND, {"error": "Memory not found"})
+        except SensitiveMemoryError as error: self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+        except (ValueError, json.JSONDecodeError): self._json(HTTPStatus.BAD_REQUEST, {"error": "Invalid Memory request"})
+        except Exception:
+            LOG.error("Memory update failed\n%s", traceback.format_exc()); self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Memory update unavailable"})
+
+    def do_DELETE(self) -> None:
+        if not self._allowed_host(): self._json(HTTPStatus.FORBIDDEN, {"error": "localhost access only"}); return
+        try:
+            payload = self._read_json(); session_id = payload.get("session_id")
+            if not isinstance(session_id, str) or not 8 <= len(session_id) <= 80 or not session_id.isascii(): raise ValueError("invalid session_id")
+            if payload.get("confirm") != "DELETE": raise ValueError("hard delete confirmation required")
+            path = urlparse(self.path).path
+            if not path.startswith("/api/memory/"): self._json(HTTPStatus.NOT_FOUND, {"error": "not found"}); return
+            memory = self.server.controller.orchestrator.long_term_memory
+            if not memory.available: raise RuntimeError("Memory unavailable")
+            memory.delete(path.removeprefix("/api/memory/")); self._json(HTTPStatus.OK, {"ok": True, "deleted": True})
+        except KeyError: self._json(HTTPStatus.NOT_FOUND, {"error": "Memory not found"})
+        except (ValueError, json.JSONDecodeError): self._json(HTTPStatus.BAD_REQUEST, {"error": "Hard delete confirmation required"})
+        except Exception:
+            LOG.error("Memory delete failed\n%s", traceback.format_exc()); self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Memory delete unavailable"})
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -434,8 +498,11 @@ def create_server(host: str, port: int, controller: RuntimeController, common_pa
         except Exception: pass
         disk = shutil.disk_usage(server.storage_root.anchor or server.storage_root)
         repository = controller.conversations
+        memory_backend = controller.orchestrator.long_term_memory
+        memory_status = {"state": "READY" if memory_backend.available else "DISABLED",
+                         "automatic_promotion": False, "error": getattr(memory_backend, "last_error", None)}
         return {"server": {"state": str(controller.state), "bind": "loopback-only"}, "conversation": controller.status().get("history", {}),
-                "voice": voice.status() if voice else {"state": "UNAVAILABLE"}, "image": {"state": "NOT_INTEGRATED"}, "memory": {"state": "DISABLED"},
+                "voice": voice.status() if voice else {"state": "UNAVAILABLE"}, "image": {"state": "NOT_INTEGRATED"}, "memory": memory_status,
                 "model": {"alias": controller.current_alias}, "sqlite": repository.integrity_status() if repository else {"state": "UNAVAILABLE"},
                 "ram": memory, "gpu": gpu, "storage": {"free_gib": round(disk.free / 2**30, 1), "total_gib": round(disk.total / 2**30, 1)},
                 "processes": {"shion_server": "RUNNING", "voice_service": voice.status().get("state") if voice else "UNAVAILABLE"}}

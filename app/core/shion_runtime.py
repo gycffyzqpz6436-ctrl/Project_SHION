@@ -15,6 +15,7 @@ from app.core.session import SessionStore
 from app.core.state import RuntimeState
 from app.models.loader import load_conversation_model
 from app.models.registry import ModelRegistry
+from app.memory.service import MemoryService, SensitiveMemoryError
 from app.storage.conversation_db import ConversationRepository
 
 
@@ -53,7 +54,7 @@ class ShionRuntime:
         self.model_factory = model_factory
         self.current_alias = None
         self.sessions = SessionStore()
-        self.orchestrator = ShionOrchestrator()
+        self.orchestrator = ShionOrchestrator(long_term_memory=MemoryService(conversations) if conversations else None)
         self.state_lock = threading.Lock()
         self.conversations = conversations
         self.persistence_error: str | None = None
@@ -107,9 +108,16 @@ class ShionRuntime:
         self.state = RuntimeState.GENERATING
         started = time.perf_counter()
         try:
-            response, context_tokens = self.orchestrator.respond(
-                self.runtime, session_id, mode, history, message
+            character_id = "shion"
+            if self.conversations:
+                try: character_id = self.conversations.load_session(session_id).get("character_id", "shion")
+                except Exception: pass
+            response, runtime_generation = self.orchestrator.respond(
+                self.runtime, session_id, mode, history, message, character_id
             )
+            generation_telemetry = (runtime_generation if isinstance(runtime_generation, dict)
+                                    else {"context_tokens": int(runtime_generation), "total_input_tokens": int(runtime_generation)})
+            context_tokens = int(generation_telemetry["context_tokens"])
             user_id, assistant_id = str(uuid.uuid4()), str(uuid.uuid4())
             created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
             history.extend(({"role": "user", "content": message}, {"role": "assistant", "content": response}))
@@ -126,10 +134,8 @@ class ShionRuntime:
                     "alias": self.current_alias,
                 },
                 "mode": mode,
-                "generation": {
-                    "latency_ms": round((time.perf_counter() - started) * 1000),
-                    "context_tokens": context_tokens,
-                },
+                "generation": {**generation_telemetry,
+                    "latency_ms": round((time.perf_counter() - started) * 1000)},
             }
             if persist:
                 self._persist_turn(session_id, mode, message, result)
@@ -203,6 +209,19 @@ class ShionRuntime:
             self.persistence_error = None
         except Exception as error:
             self.persistence_error = f"Conversation saved only ephemerally: {error}"
+            return
+        memory = self.orchestrator.long_term_memory
+        if memory.available:
+            try:
+                character_id = self.conversations.load_session(session_id).get("character_id", "shion")
+                candidate = memory.extract_candidate(message, session_id, result["user_message_id"], character_id)
+                if candidate:
+                    result["memory_candidate"] = {key: candidate[key] for key in ("id", "type", "scope", "status", "content")}
+                memory.last_error = None
+            except SensitiveMemoryError:
+                result["memory_candidate_rejected"] = "Sensitive content is not eligible for Memory"
+            except Exception as error:
+                memory.last_error = f"Memory candidate unavailable: {type(error).__name__}"
 
     def create_persistent_session(self, session_id: str, mode: str, model_id: str | None = None, revision: str | None = None) -> dict:
         if not self.conversations: raise RuntimeError("persistent history unavailable")

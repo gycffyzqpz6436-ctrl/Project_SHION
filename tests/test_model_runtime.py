@@ -14,6 +14,7 @@ from app.runtime.model_runtime import (
     effective_generation_limit,
     generation_eos_token_ids,
 )
+from app.runtime.generation_policy import AdaptiveOutputBudget, RecentTurnContextStrategy
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -59,9 +60,9 @@ Stay conversational rather than instructional."""
 
         captured = {}
 
-        def apply_chat_template(_messages, return_tensors=None, **_kwargs):
+        def apply_chat_template(_messages, return_tensors=None, return_dict=False, **_kwargs):
             if return_tensors is None:
-                return list(range(20))
+                return {"input_ids": list(range(20)), "attention_mask": [1] * 20} if return_dict else list(range(20))
             return Batch(input_ids=torch.arange(20).reshape(1, 20))
 
         def generate(**kwargs):
@@ -74,6 +75,7 @@ Stay conversational rather than instructional."""
         runtime.chat_template_options = {"enable_thinking": False}
         runtime.tokenizer = Mock(
             apply_chat_template=apply_chat_template, decode=Mock(return_value="short reply"),
+            encode=Mock(return_value=[1]),
             eos_token_id=1, pad_token_id=0,
         )
         runtime.model = Mock(
@@ -86,15 +88,43 @@ Stay conversational rather than instructional."""
         }
         runtime.context_limit = 100
         runtime.repetition_guard = None
+        runtime.context_strategy = RecentTurnContextStrategy()
+        runtime.output_budget = AdaptiveOutputBudget()
+        runtime.input_budget = 80
         runtime.lock = Lock()
         runtime.turns = {}
 
-        response, input_tokens = runtime.generate("session", "minimal", [], "hello")
+        response, telemetry = runtime.generate("session", "minimal", [], "hello")
         self.assertEqual(response, "short reply")
-        self.assertEqual(input_tokens, 20)
+        self.assertEqual(telemetry["total_input_tokens"], 20)
+        self.assertEqual(telemetry["output_tokens"], 1)
         self.assertEqual(captured["max_new_tokens"], 80)
         self.assertEqual(captured["eos_token_id"], [1, 106, 50])
         self.assertEqual(captured["input_ids"].shape[1] + captured["max_new_tokens"], 100)
+
+    def test_token_count_uses_input_id_sequence_not_mapping_length(self):
+        runtime = LocalModelRuntime.__new__(LocalModelRuntime)
+        runtime.chat_template_options = {"enable_thinking": False}
+        runtime.tokenizer = Mock(apply_chat_template=Mock(return_value={"input_ids": list(range(321)), "attention_mask": [1] * 321}))
+        self.assertEqual(runtime._token_count([{"role":"user","content":"hello"}]), 321)
+
+    def test_recent_turn_budget_keeps_current_message_and_omits_oldest_turns(self):
+        strategy = RecentTurnContextStrategy()
+        history = [{"role":"user","content":"old"},{"role":"assistant","content":"old reply"},
+                   {"role":"user","content":"recent"},{"role":"assistant","content":"recent reply"}]
+        mandatory = [{"role":"system","content":"system"},{"role":"user","content":"current"}]
+        count = lambda messages: sum(len(item["content"].split()) + 1 for item in messages)
+        selection = strategy.select(history, mandatory, count, budget=9)
+        self.assertEqual([item["content"] for item in selection.messages], ["system","recent","recent reply","current"])
+        self.assertGreater(selection.history_tokens_omitted, 0)
+        self.assertEqual(selection.history_messages_omitted, 2)
+
+    def test_adaptive_output_budget_is_bounded_by_explicit_intent(self):
+        policy = AdaptiveOutputBudget()
+        self.assertEqual(vars(policy.resolve("一文で答えて", 4096)), {"intent":"short","max_new_tokens":128})
+        self.assertEqual(vars(policy.resolve("今日どうだった？", 4096)), {"intent":"normal","max_new_tokens":512})
+        self.assertEqual(vars(policy.resolve("詳しく長文で説明して", 4096)), {"intent":"long","max_new_tokens":2048})
+        self.assertEqual(vars(policy.resolve("できるだけ長く4096 tokensで", 4096)), {"intent":"maximum","max_new_tokens":4096})
 
     def test_stops_three_consecutive_repeated_blocks(self):
         guard = RepeatedSequenceStoppingCriteria(prompt_length=2, min_block_tokens=4, max_block_tokens=8, repeats=3)
@@ -106,6 +136,14 @@ Stay conversational rather than instructional."""
         guard = RepeatedSequenceStoppingCriteria(prompt_length=2, min_block_tokens=4, max_block_tokens=8, repeats=3)
         ids = torch.tensor([[1, 2, 10, 11, 12, 13, 20, 10, 11, 12, 13]])
         self.assertFalse(guard(ids, torch.empty(0)))
+
+    def test_conservative_guard_waits_for_minimum_output(self):
+        guard = RepeatedSequenceStoppingCriteria(prompt_length=1, min_block_tokens=4, max_block_tokens=8,
+                                                 repeats=4, min_generated_tokens=20)
+        repeated = torch.tensor([[1] + [10,11,12,13] * 4])
+        self.assertFalse(guard(repeated, torch.empty(0)))
+        repeated = torch.tensor([[1] + [20,21,22,23] + [10,11,12,13] * 4])
+        self.assertTrue(guard(repeated, torch.empty(0)))
 
     def test_owner_manual_models_are_allowlisted_with_fixed_settings(self):
         registry = json.loads((ROOT / "app" / "model_registry.json").read_text(encoding="utf-8"))
@@ -132,6 +170,8 @@ Stay conversational rather than instructional."""
         self.assertEqual(low_refusal["revision"], "90825e3e221c400cda1afdd425b77e0a0241f7f9")
         self.assertEqual(low_refusal["chat_template_options"], {"enable_thinking": False})
         self.assertEqual(low_refusal["generation_overrides"]["max_new_tokens"], 4096)
+        self.assertEqual(low_refusal["input_context_budget"], 6144)
+        self.assertEqual(low_refusal["repetition_guard"]["repeats"], 4)
         self.assertIn("quality not approved", low_refusal["modification_type"])
         self.assertNotIn("generation_overrides", registry["ministral3_official"])
         self.assertNotIn("generation_overrides", registry["nemo12b_official"])

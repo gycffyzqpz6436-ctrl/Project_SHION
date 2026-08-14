@@ -8,7 +8,7 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta(version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS sessions(
@@ -49,6 +49,42 @@ CREATE TABLE IF NOT EXISTS voice_artifacts(
  UNIQUE(message_id,response_version,voice_preset_id,attempt)
 );
 CREATE INDEX IF NOT EXISTS idx_voice_artifacts_message ON voice_artifacts(message_id,response_version);
+CREATE TABLE IF NOT EXISTS memories(
+ id TEXT PRIMARY KEY,
+ type TEXT NOT NULL CHECK(type IN ('preference','profile','project','relationship','decision','temporary','character_specific','system')),
+ character_id TEXT NOT NULL DEFAULT 'shion',
+ scope TEXT NOT NULL CHECK(scope IN ('global_owner','character','project','conversation','temporary')),
+ content TEXT NOT NULL,
+ normalized_content TEXT NOT NULL,
+ source_conversation_id TEXT REFERENCES sessions(session_id) ON DELETE SET NULL,
+ source_message_id TEXT REFERENCES messages(message_id) ON DELETE SET NULL,
+ source_author TEXT NOT NULL CHECK(source_author IN ('owner','assistant','external','system')),
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL, last_used_at TEXT,
+ expires_at TEXT,
+ status TEXT NOT NULL CHECK(status IN ('candidate','active','archived','rejected','expired')),
+ confidence REAL NOT NULL DEFAULT 0 CHECK(confidence BETWEEN 0 AND 1),
+ importance INTEGER NOT NULL DEFAULT 3 CHECK(importance BETWEEN 1 AND 5),
+ owner_approved INTEGER NOT NULL DEFAULT 0 CHECK(owner_approved IN (0,1)),
+ pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),
+ retrieval_count INTEGER NOT NULL DEFAULT 0,
+ metadata_json TEXT NOT NULL DEFAULT '{}',
+ version INTEGER NOT NULL DEFAULT 1,
+ supersedes TEXT REFERENCES memories(id) ON DELETE SET NULL,
+ superseded_by TEXT REFERENCES memories(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_memories_status_scope ON memories(status,scope,character_id);
+CREATE INDEX IF NOT EXISTS idx_memories_source ON memories(source_conversation_id,source_message_id);
+CREATE TABLE IF NOT EXISTS memory_versions(
+ memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+ version INTEGER NOT NULL, content TEXT NOT NULL, normalized_content TEXT NOT NULL,
+ type TEXT NOT NULL, character_id TEXT NOT NULL, scope TEXT NOT NULL,
+ status TEXT NOT NULL, importance INTEGER NOT NULL, pinned INTEGER NOT NULL,
+ metadata_json TEXT NOT NULL, changed_at TEXT NOT NULL,
+ PRIMARY KEY(memory_id,version)
+);
+CREATE TABLE IF NOT EXISTS memory_settings(
+ setting_key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 """
 
 
@@ -73,18 +109,21 @@ class ConversationRepository:
             exists = connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_meta'").fetchone()
             if exists:
                 row = connection.execute("SELECT version FROM schema_meta LIMIT 1").fetchone()
-                if row and row["version"] not in {1, 2, SCHEMA_VERSION}:
+                if row and row["version"] not in {1, 2, 3, SCHEMA_VERSION}:
                     raise RuntimeError(f"unsupported conversation schema version: {row['version']}")
         with self.transaction() as connection:
             connection.executescript(SCHEMA)
             row = connection.execute("SELECT version FROM schema_meta LIMIT 1").fetchone()
             if row is None:
                 connection.execute("INSERT INTO schema_meta(version) VALUES (?)", (SCHEMA_VERSION,))
-            elif row["version"] in {1, 2}:
+            elif row["version"] in {1, 2, 3}:
                 columns = {item["name"] for item in connection.execute("PRAGMA table_info(sessions)")}
                 if "character_id" not in columns:
                     connection.execute("ALTER TABLE sessions ADD COLUMN character_id TEXT NOT NULL DEFAULT 'shion'")
                 connection.execute("UPDATE schema_meta SET version=?", (SCHEMA_VERSION,))
+            connection.execute(
+                "INSERT OR IGNORE INTO memory_settings(setting_key,value_json,updated_at) VALUES('automatic_promotion','false',datetime('now'))"
+            )
 
     @contextmanager
     def transaction(self):
@@ -283,7 +322,7 @@ class ConversationRepository:
         with closing(self.connect()) as connection:
             result = connection.execute("PRAGMA quick_check").fetchone()[0]
             counts = {table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-                      for table in ("sessions", "messages", "voice_artifacts")}
+                      for table in ("sessions", "messages", "voice_artifacts", "memories")}
             return {"state": "OK" if result == "ok" else "ERROR", "schema_version": SCHEMA_VERSION, "counts": counts}
 
     @staticmethod

@@ -292,6 +292,10 @@ evaluation set and manual review.
 
 ### Phase 5 — Memory and Knowledge
 
+Phase F delivers the first local Long-Term Memory slice: Owner CRUD and review UI, explicit candidates, lifecycle/versioning, privacy filtering, deterministic bounded retrieval, and non-fatal Chat integration. Automatic permanent promotion is OFF.
+
+Remaining gates are automatic promotion, vector/embedding retrieval, sensitive-category expansion, cross-character sharing, external knowledge ingestion, Desktop Companion Memory, and cloud sync.
+
 - design reviewed long-term memory extraction and deletion;
 - connect a provenance-aware local knowledge store and retrieval layer;
 - evaluate crawler integration as a separately secured data pipeline.

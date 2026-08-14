@@ -86,6 +86,8 @@ generation defaults. Client-provided model paths remain prohibited.
 
 ## Memory
 
+Phase F activates the local Owner-controlled implementation behind the existing Memory boundary. Automatic promotion remains OFF: normal conversation, assistant output, external documents, and tools cannot silently mutate approved Owner Memory. Deterministic retrieval is the current adapter; vectors, cloud synchronization, Desktop Companion access, cross-character sharing, and external knowledge remain future Owner Gates. The detailed contract is in `shion_long_term_memory.md`.
+
 - Short-term memory is the current `(session, mode)` conversation context and is
   cleared on New Chat or model switch.
 - Long-term memory is a separate future service for preferences, relationship

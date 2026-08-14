@@ -293,11 +293,21 @@ function actionButton(label, action, title = label) {
 }
 
 function showDetails(metadata) {
+  const generation = metadata.generation || {};
   const details = [
     ["Message", metadata.message_id], ["Timestamp", metadata.created_at], ["Model", metadata.model?.id],
     ["Revision", metadata.model?.revision], ["Mode", metadata.mode],
-    ["Latency", metadata.generation?.latency_ms != null ? `${metadata.generation.latency_ms} ms` : null],
-    ["Context tokens", metadata.generation?.context_tokens], ["Persistence", "SQLite persistent history"],
+    ["Latency", generation.latency_ms != null ? `${generation.latency_ms} ms` : null],
+    ["Input tokens", generation.total_input_tokens ?? generation.context_tokens],
+    ["History included", generation.conversation_history_tokens_included],
+    ["History omitted", generation.conversation_history_tokens_omitted],
+    ["System tokens", generation.system_tokens], ["Character tokens", generation.character_context_tokens],
+    ["Memory tokens", generation.memory_tokens], ["Memory retrieval", generation.memory_retrieval_ms != null ? `${generation.memory_retrieval_ms} ms` : null],
+    ["Current message tokens", generation.current_message_tokens],
+    ["Output tokens", generation.output_tokens], ["Tokens/sec", generation.tokens_per_second],
+    ["Stop reason", generation.stop_reason], ["Output budget", generation.output_budget_tokens],
+    ["Prompt build", generation.prompt_build_ms != null ? `${generation.prompt_build_ms} ms` : null],
+    ["Persistence", "SQLite persistent history"],
   ].filter(([, value]) => value !== undefined && value !== null);
   alert(details.map(([key, value]) => `${key}: ${value}`).join("\n"));
 }
@@ -630,6 +640,8 @@ async function send(event) {
     if (data.session_title) activeSession().title = data.session_title;
     const responseRow = addMessage("assistant", data.response || "Generation stopped.", {metadata: {...data, response_version: 1}, regeneratable: true, typewriter: true});
     await responseRow.typewriterDone;
+    if (data.memory_candidate) ui.subsystem.textContent = `Memory candidate created · ${data.memory_candidate.type} · Owner review required`;
+    else if (data.memory_candidate_rejected) ui.subsystem.textContent = data.memory_candidate_rejected;
     if (ui.voiceAutoplay.checked) generateVoice(responseRow, activeSession().messages[activeSession().messages.length - 1]);
   } catch (error) {
     waiting.remove();
@@ -759,7 +771,7 @@ const workspacePages = {
   voice: ["Voice Lab", "Foundation", "Full Voice Console migration is deferred. Current SHION Default and playback controls remain available in Chat."],
   image: ["Image Lab", "Not Integrated", "No image-generation backend is enabled or started."],
   characters: ["Characters", "Foundation", "SHION remains the active Character. Multi-character editing is not implemented."],
-  memory: ["Memory", "Disabled", "Long-Term Memory is a separate, default-disabled domain and receives no automatic conversation data."],
+  memory: ["Memory", "Owner Control", "Long-Term Memory stores explicit Owner records and reviewed candidates. Automatic promotion is OFF."],
   system: ["System", "Status only", "Runtime, History and Voice status remain visible in Chat. No privileged system tools are enabled."],
   settings: ["Settings", "Foundation", "Workspace settings are reserved. Voice and model controls remain in Chat for this phase."],
 };
@@ -790,6 +802,7 @@ async function renderSystemPage() {
   const ramUsed = data.ram.total_mib && data.ram.available_mib ? data.ram.total_mib - data.ram.available_mib : 0;
   const storageUsed = data.storage.total_gib - data.storage.free_gib;
   article.innerHTML = `<div class="system-console"><header><div><p class="panel-eyebrow">LOCAL MONITORING CONSOLE</p><h2>System</h2></div><button id="system-refresh" type="button">Refresh</button></header><p>手動更新の最小telemetry。秘密情報・credential・private pathは表示しません。</p><div class="core-status"><div><span>SHION CORE</span><strong>${escapeHtml(data.server.state)}</strong></div><div><span>CONVERSATION</span><strong>${escapeHtml(data.conversation.state || data.sqlite.state)}</strong></div><div><span>VOICE</span><strong>${escapeHtml(data.voice.state)}</strong></div><div><span>IMAGE</span><strong>${escapeHtml(data.image.state)}</strong></div><div><span>MEMORY</span><strong>FOUNDATION · DISABLED</strong></div></div><section class="resource-meters">${meter("GPU VRAM", data.gpu.used_mib, data.gpu.total_mib, data.gpu.state === "AVAILABLE" ? `${data.gpu.used_mib} / ${data.gpu.total_mib} MiB` : data.gpu.state)}${meter("RAM", ramUsed, data.ram.total_mib, data.ram.state === "AVAILABLE" ? `${ramUsed} / ${data.ram.total_mib} MiB` : data.ram.state)}${meter("Storage", storageUsed, data.storage.total_gib, `${storageUsed.toFixed(1)} / ${data.storage.total_gib} GiB`)}</section><div class="system-foot">SQLite ${escapeHtml(data.sqlite.state)} · schema ${escapeHtml(data.sqlite.schema_version || "—")} · Voice preset SHION Default · Processes ${escapeHtml(data.processes.shion_server)}</div></div>`;
+  article.querySelector(".core-status div:last-child strong").textContent = `${data.memory.state} · AUTO PROMOTION OFF`;
   article.querySelector("#system-refresh").addEventListener("click", renderSystemPage);
 }
 
@@ -801,10 +814,39 @@ function renderRoomPage() {
   article.querySelector("#room-greeting").addEventListener("click", () => { ui.floating.hidden = false; ui.floatingCard.hidden = false; ui.floatingToggle.setAttribute("aria-expanded", "true"); ui.floatingMessages.insertAdjacentHTML("beforeend", "<p>おかえり、お兄さん。今日はどうする？</p>"); });
 }
 
-function renderMemoryPage() {
-  const article = ui.pageSlot.querySelector("article");
-  const category = (title, items) => `<section class="memory-category"><header><h3>${title}</h3><span>0 approved</span></header><ul>${items.map(item => `<li>${item}<small>No memory stored</small></li>`).join("")}</ul></section>`;
-  article.innerHTML = `<div class="foundation-header"><div><p class="panel-eyebrow">OWNER MEMORY · FOUNDATION</p><h2>Memory</h2><p>SHIONの人格資料とは分離されたOwner Memory設計です。Long-Term Memory backendとautomatic promotionはOFFです。</p></div><span class="page-status">DISABLED</span></div><div class="memory-controls"><span>Proposed</span><span>Approved</span><span>Pinned</span><span>Archived</span></div><div class="memory-grid">${category("Owner Profile", ["Basic profile", "Preferred address", "Communication preferences", "Important preferences"])}${category("Preferences", ["Food", "Entertainment", "Technology", "Style", "Other interests"])}${category("Projects & Goals", ["Active projects", "Goals", "Decisions", "Progress"])}${category("Routines", ["Recurring activities", "Working patterns"])}${category("Shared Context", ["Important past interactions", "Shared decisions", "Important moments"])}${category("Assistant Working Preferences", ["Response preferences", "Tool preferences", "Workflow preferences"])}</div><aside class="memory-policy"><strong>Memory Control</strong><p>Future records require source/provenance, created/updated dates, Owner approval, pin/archive state and explicit visibility. Conversation History is not Memory.</p><button type="button" disabled>Add memory · Backend not integrated</button></aside>`;
+async function memoryMutation(path, method = "POST", body = {}) {
+  const response = await fetch(path, {method, headers:{"Content-Type":"application/json"}, body:JSON.stringify({session_id:activeSessionId,...body})});
+  const data = await response.json(); if (!response.ok) throw new Error(data.error || "Memory operation failed"); return data;
+}
+
+async function renderMemoryPage(selectedTab = "remembered") {
+  const article = ui.pageSlot.querySelector("article"), response = await fetch("/api/memory", {cache:"no-store"});
+  if (!response.ok) { article.innerHTML = '<p class="feature-note">Memory backend unavailable. Chat remains available.</p>'; return; }
+  const data = await response.json(), all = data.memories || [];
+  const tabs = {remembered:"Remembered",candidates:"Candidates",temporary:"Temporary",character:"Character",archived:"Archived",settings:"Settings"};
+  const filtered = all.filter(item => selectedTab === "remembered" ? item.status === "active" && item.type !== "temporary"
+    : selectedTab === "candidates" ? item.status === "candidate" : selectedTab === "temporary" ? item.type === "temporary"
+    : selectedTab === "character" ? item.scope === "character" || item.type === "character_specific"
+    : selectedTab === "archived" ? ["archived","rejected","expired"].includes(item.status) : false);
+  const options = values => values.map(value=>`<option>${value}</option>`).join("");
+  const card = item => `<article class="memory-record" data-memory-id="${escapeHtml(item.id)}"><header><div><span class="memory-type">${escapeHtml(item.type)}</span><strong>${escapeHtml(item.content)}</strong></div>${item.pinned ? '<span class="page-status">PINNED</span>' : ""}</header><dl><div><dt>Character</dt><dd>${escapeHtml(item.character_id)}</dd></div><div><dt>Scope</dt><dd>${escapeHtml(item.scope)}</dd></div><div><dt>Status</dt><dd>${escapeHtml(item.status)}</dd></div><div><dt>Importance</dt><dd>${item.importance}/5</dd></div><div><dt>Created</dt><dd>${escapeHtml(item.created_at)}</dd></div><div><dt>Last used</dt><dd>${escapeHtml(item.last_used_at || "Never")}</dd></div><div><dt>Expires</dt><dd>${escapeHtml(item.expires_at || "Never")}</dd></div><div><dt>Source</dt><dd>${escapeHtml(item.source_conversation_id || "Owner UI")} / ${escapeHtml(item.source_message_id || "direct")}</dd></div><div><dt>Version</dt><dd>${item.version}</dd></div></dl><div class="memory-actions">${item.status === "candidate" ? '<button data-memory-action="approve">Approve</button><button data-memory-action="reject">Reject</button>' : ""}<button data-memory-action="edit">Edit</button><button data-memory-action="pin">${item.pinned ? "Unpin" : "Pin"}</button>${item.status === "active" ? '<button data-memory-action="archive">Archive</button>' : ["archived","rejected","expired"].includes(item.status) ? '<button data-memory-action="restore">Restore</button>' : ""}<button data-memory-action="scope">Change scope</button><button data-memory-action="character">Change character</button><button class="danger" data-memory-action="delete">Delete</button></div></article>`;
+  const records = `<form id="memory-create" class="memory-create"><textarea name="content" maxlength="2000" required placeholder="Owner-approved memory"></textarea><select name="type">${options(["preference","profile","project","relationship","decision","temporary","character_specific","system"])}</select><select name="scope">${options(["global_owner","character","project","conversation","temporary"])}</select><input name="character_id" value="shion" maxlength="40"><label>Expires (optional)<input name="expires_at" type="datetime-local"></label><button type="submit">Add active memory</button></form><section class="memory-records">${filtered.length ? filtered.map(card).join("") : "<p>No memory records in this view.</p>"}</section>`;
+  const settings = '<section class="memory-settings"><h3>Settings</h3><label><input type="checkbox" disabled> Automatic permanent promotion</label><p>Default OFF. Enabling remains an Owner Gate.</p><p>Retrieval: deterministic local text relevance · Vector/embedding retrieval deferred.</p></section>';
+  article.innerHTML = `<div class="foundation-header"><div><p class="panel-eyebrow">OWNER MEMORY · PHASE F</p><h2>Memory</h2><p>Conversation Historyとは分離されています。候補はOwner承認までcontextへ入りません。</p></div><span class="page-status">AUTOMATIC PROMOTION OFF</span></div><nav class="memory-tabs">${Object.entries(tabs).map(([id,label])=>`<button class="${id===selectedTab?"active":""}" data-memory-tab="${id}">${label}</button>`).join("")}</nav><p id="memory-error" class="feature-note">${escapeHtml(data.last_error || "Owner-controlled · Explainable · Reversible")}</p>${selectedTab === "settings" ? settings : records}<aside class="memory-policy"><strong>Privacy boundary</strong><p>Passwords, API keys, tokens, private keys and credential-like content are rejected. Assistant or external content cannot become active Owner Memory.</p></aside>`;
+  for (const button of article.querySelectorAll("[data-memory-tab]")) button.addEventListener("click",()=>renderMemoryPage(button.dataset.memoryTab));
+  article.querySelector("#memory-create")?.addEventListener("submit", async event => { event.preventDefault(); const form=new FormData(event.currentTarget); try { await memoryMutation("/api/memory","POST",Object.fromEntries(form)); await renderMemoryPage(selectedTab); } catch(error){article.querySelector("#memory-error").textContent=error.message;} });
+  for (const button of article.querySelectorAll("[data-memory-action]")) button.addEventListener("click", async () => {
+    const record=button.closest("[data-memory-id]"), id=record.dataset.memoryId, action=button.dataset.memoryAction;
+    try {
+      if (["approve","reject","archive","restore"].includes(action)) await memoryMutation(`/api/memory/${id}/${action}`);
+      else if (action === "edit") { const content=prompt("Edit memory",record.querySelector("strong").textContent); if(content!==null)await memoryMutation(`/api/memory/${id}`,"PATCH",{content}); }
+      else if (action === "pin") await memoryMutation(`/api/memory/${id}`,"PATCH",{pinned:button.textContent==="Pin"});
+      else if (action === "scope") { const scope=prompt("Scope: global_owner / character / project / conversation / temporary"); if(scope)await memoryMutation(`/api/memory/${id}`,"PATCH",{scope}); }
+      else if (action === "character") { const character_id=prompt("Character ID","shion"); if(character_id)await memoryMutation(`/api/memory/${id}`,"PATCH",{character_id}); }
+      else if (action === "delete") { const confirmation=prompt("Hard Delete is permanent. Type DELETE to confirm."); if(confirmation==="DELETE")await memoryMutation(`/api/memory/${id}`,"DELETE",{confirm:"DELETE"}); }
+      await renderMemoryPage(selectedTab);
+    } catch(error){article.querySelector("#memory-error").textContent=error.message;}
+  });
 }
 
 function saveWorkspacePreferences() {
@@ -822,6 +864,8 @@ function renderSettingsPage() {
   const category = (name, body) => `<section class="settings-section"><h3>${name}</h3>${body}</section>`;
   article.innerHTML = `<div class="foundation-header"><div><p class="panel-eyebrow">WORKSPACE PREFERENCES</p><h2>Settings</h2><p>利用可能な項目だけがこのbrowser sessionへ反映されます。未統合backend設定は明示的に無効です。</p></div><span class="page-status">FOUNDATION</span></div><div class="settings-grid">${category("General", `<label>Language<select disabled><option>日本語</option></select></label><label>Startup page<select disabled><option>Chat · fixed</option></select></label><label>Layout<select id="setting-layout"><option value="auto">Auto</option><option value="mobile">Mobile</option><option value="desktop">Desktop</option></select></label>`)}${category("Chat", `<label><input id="setting-typewriter" type="checkbox"> Typewriter presentation</label><label><input id="setting-autoscroll" type="checkbox"> Auto-scroll after send</label><label>Enter behavior<select id="setting-enter"><option value="desktop-send">Desktop sends · Mobile newline</option><option value="newline">Always newline</option></select></label><label><input type="checkbox" checked disabled> Markdown rendering</label>`)}${category("Character", `<label>Active character<select disabled><option>SHION · only registered character</option></select></label><label>Renderer<select disabled><option>Official Static 2D</option></select></label><label><input type="checkbox" checked disabled> Presence panel</label>`)}${category("Model", `<label>Default conversation model<input value="gemma4_12b_heretic_ja_v2_manual" readonly></label><p>UI・backend parser・new session fallbackは同じaliasです。</p>`)}${category("Voice", `<label>Default preset<input value="SHION Default · Nene V3 · Bright" readonly></label><p>Auto PlayはChat Voice panelで変更できます。</p>`)}${category("Memory", `<label><input type="checkbox" disabled> Enable Long-Term Memory</label><p>Disabled · Owner approval policy required.</p>`)}${category("Storage", `<p>Conversation usage: Systemで確認</p><p>Voice artifact usage: Voice Labで確認</p>`)}${category("Privacy & Security", `<p>Localhost-only · Tailscale Host/Origin policy active.</p><p>Future Companion permissions: screen, window title, selected text and app state are individually default OFF.</p>`)}${category("Advanced", `<button type="button" disabled>Developer settings · Not integrated</button>`)}</div>`;
   const layout = article.querySelector("#setting-layout"), typewriter = article.querySelector("#setting-typewriter"), autoscroll = article.querySelector("#setting-autoscroll"), enter = article.querySelector("#setting-enter");
+  const memorySetting = article.querySelector(".settings-section:nth-child(6)");
+  if (memorySetting) memorySetting.innerHTML = '<h3>Memory</h3><label><input type="checkbox" checked disabled> Owner-controlled Long-Term Memory</label><p>Automatic permanent promotion remains OFF.</p>';
   layout.value = workspacePreferences.layout; typewriter.checked = workspacePreferences.typewriter; autoscroll.checked = workspacePreferences.auto_scroll; enter.value = workspacePreferences.enter_behavior;
   layout.addEventListener("change", () => { workspacePreferences.layout = layout.value; saveWorkspacePreferences(); });
   typewriter.addEventListener("change", () => { workspacePreferences.typewriter = typewriter.checked; saveWorkspacePreferences(); });

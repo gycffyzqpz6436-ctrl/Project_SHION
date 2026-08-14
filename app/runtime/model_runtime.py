@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 from threading import Event, Lock
 
@@ -33,6 +34,7 @@ from chat_local import (  # noqa: E402
     validate_adapter,
     validate_generation,
 )
+from app.runtime.generation_policy import AdaptiveOutputBudget, RecentTurnContextStrategy
 
 NEUTRAL_PROMPT_PATH = ROOT / "app" / "prompts" / "neutral_conversation.txt"
 
@@ -54,15 +56,19 @@ def effective_generation_limit(input_tokens: int, hard_ceiling: int, context_lim
 class RepeatedSequenceStoppingCriteria(StoppingCriteria):
     """Stop only sustained, consecutive token-block loops in newly generated text."""
 
-    def __init__(self, prompt_length: int, min_block_tokens: int = 4, max_block_tokens: int = 32, repeats: int = 3):
+    def __init__(self, prompt_length: int, min_block_tokens: int = 4, max_block_tokens: int = 32,
+                 repeats: int = 3, min_generated_tokens: int = 0):
         self.prompt_length = prompt_length
         self.min_block_tokens = min_block_tokens
         self.max_block_tokens = max_block_tokens
         self.repeats = repeats
+        self.min_generated_tokens = min_generated_tokens
         self.triggered = False
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
         generated = input_ids[0, self.prompt_length :].tolist()
+        if len(generated) < self.min_generated_tokens:
+            return False
         largest = min(self.max_block_tokens, len(generated) // self.repeats)
         for size in range(self.min_block_tokens, largest + 1):
             tail = generated[-size:]
@@ -109,6 +115,9 @@ class LocalModelRuntime:
         self.lock = Lock()
         self.turns: dict[tuple[str, str], int] = {}
         self.cancel_events: dict[str, Event] = {}
+        self.context_strategy = RecentTurnContextStrategy()
+        self.output_budget = AdaptiveOutputBudget()
+        self.input_budget = int(self.model_spec.get("input_context_budget", 8192))
 
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_path, local_files_only=True, trust_remote_code=False, fix_mistral_regex=True
@@ -165,34 +174,55 @@ class LocalModelRuntime:
             "gpu_memory_reserved_mib": round(reserved),
         }
 
-    def generate(self, session_id: str, mode: str, history: list[dict], user_text: str) -> tuple[str, int]:
+    def _token_count(self, messages: list[dict]) -> int:
+        rendered = self.tokenizer.apply_chat_template(
+            messages, tokenize=True, add_generation_prompt=True, return_dict=True,
+            **self.chat_template_options,
+        )
+        input_ids = rendered["input_ids"]
+        return len(input_ids[0]) if input_ids and isinstance(input_ids[0], list) else len(input_ids)
+
+    def generate(self, session_id: str, mode: str, history: list[dict], user_text: str,
+                 memory_context: str = "") -> tuple[str, dict]:
         if mode not in {"minimal", "neutral", "canonical"}:
             raise ValueError("mode must be minimal, neutral, or canonical")
         cancel_event = Event()
         if not hasattr(self, "cancel_events"):
             self.cancel_events = {}
         self.cancel_events[session_id] = cancel_event
-        proposed = history + [{"role": "user", "content": user_text}]
-        messages = ([{"role": "system", "content": self.neutral_prompt}, *proposed]
-                    if mode == "neutral" else conversation_messages(mode, self.prompt_path, proposed))
-        rendered_ids = self.tokenizer.apply_chat_template(
-            messages, tokenize=True, add_generation_prompt=True, **self.chat_template_options
-        )
-        input_tokens = len(rendered_ids)
+        system_messages = ([{"role": "system", "content": self.neutral_prompt}] if mode == "neutral"
+                           else conversation_messages(mode, self.prompt_path, []) )
+        system_tokens = sum(len(self.tokenizer.encode(item["content"], add_special_tokens=False))
+                            for item in system_messages)
+        if memory_context:
+            if system_messages and system_messages[0].get("role") == "system":
+                system_messages[0] = {**system_messages[0], "content": f"{system_messages[0]['content']}\n\n{memory_context}"}
+            else:
+                system_messages.insert(0, {"role": "system", "content": memory_context})
+        mandatory = [*system_messages, {"role": "user", "content": user_text}]
+        prompt_started = time.perf_counter()
+        selection = self.context_strategy.select(history, mandatory, self._token_count, self.input_budget)
+        messages = selection.messages
+        input_tokens = selection.total_input_tokens
+        selection_build_ms = (time.perf_counter() - prompt_started) * 1000
+        requested_output = self.output_budget.resolve(user_text, self.generation["max_new_tokens"])
         effective_max_new_tokens = effective_generation_limit(
-            input_tokens, self.generation["max_new_tokens"], self.context_limit
+            input_tokens, requested_output.max_new_tokens, self.context_limit
         )
         key = (session_id, mode)
         with self.lock:
+            batch_started = time.perf_counter()
             batch = self.tokenizer.apply_chat_template(
                 messages, tokenize=True, add_generation_prompt=True, return_tensors="pt", return_dict=True,
                 **self.chat_template_options,
             ).to(self.model.device)
+            prompt_build_ms = round(selection_build_ms + (time.perf_counter() - batch_started) * 1000, 3)
             criteria = [CancellationStoppingCriteria(cancel_event)]
             if self.repetition_guard:
                 guard = RepeatedSequenceStoppingCriteria(batch["input_ids"].shape[1], **self.repetition_guard)
                 criteria.append(guard)
             set_seed(self.generation["seed"] + self.turns.get(key, 0))
+            generation_started = time.perf_counter()
             with torch.inference_mode():
                 output_ids = self.model.generate(
                     **batch,
@@ -208,11 +238,43 @@ class LocalModelRuntime:
                     stopping_criteria=StoppingCriteriaList(criteria),
                 )
             self.turns[key] = self.turns.get(key, 0) + 1
+            generation_ms = round((time.perf_counter() - generation_started) * 1000)
         self.cancel_events.pop(session_id, None)
+        generated_ids = output_ids[0, batch["input_ids"].shape[1]:]
         response = self.tokenizer.decode(
-            output_ids[0, batch["input_ids"].shape[1]:], skip_special_tokens=True
+            generated_ids, skip_special_tokens=True
         ).strip()
-        return response, input_tokens
+        output_tokens = int(generated_ids.shape[0])
+        eos_ids = generation_eos_token_ids(self.model, self.tokenizer)
+        eos_ids = {int(eos_ids)} if isinstance(eos_ids, int) else {int(item) for item in eos_ids}
+        if cancel_event.is_set(): stop_reason = "owner_stop"
+        elif self.repetition_guard and guard.triggered: stop_reason = "repetition_guard"
+        elif output_tokens and int(generated_ids[-1]) in eos_ids: stop_reason = "eos"
+        elif output_tokens >= effective_max_new_tokens: stop_reason = "max_tokens"
+        else: stop_reason = "generation_complete"
+        current_tokens = len(self.tokenizer.encode(user_text, add_special_tokens=False))
+        memory_tokens = len(self.tokenizer.encode(memory_context, add_special_tokens=False)) if memory_context else 0
+        telemetry = {
+            "context_tokens": input_tokens,
+            "total_input_tokens": input_tokens,
+            "conversation_history_tokens_included": selection.history_tokens_included,
+            "conversation_history_tokens_omitted": selection.history_tokens_omitted,
+            "conversation_history_messages_included": selection.history_messages_included,
+            "conversation_history_messages_omitted": selection.history_messages_omitted,
+            "memory_tokens": memory_tokens,
+            "system_tokens": system_tokens,
+            "character_context_tokens": 0,
+            "current_message_tokens": current_tokens,
+            "output_tokens": output_tokens,
+            "generation_ms": generation_ms,
+            "tokens_per_second": round(output_tokens / (generation_ms / 1000), 3) if generation_ms else None,
+            "stop_reason": stop_reason,
+            "output_intent": requested_output.intent,
+            "output_budget_tokens": effective_max_new_tokens,
+            "input_budget_tokens": self.input_budget,
+            "prompt_build_ms": prompt_build_ms,
+        }
+        return response, telemetry
 
     def cancel(self, session_id: str) -> bool:
         event = self.cancel_events.get(session_id)

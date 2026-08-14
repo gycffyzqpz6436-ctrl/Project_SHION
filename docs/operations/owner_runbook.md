@@ -271,7 +271,21 @@ Tailscale設定はこのRunbook作成では変更していません。
 | Voice生成後 | `READY` | WAV生成・Artifact登録完了 |
 | Image | `DISABLED` | 現在未統合。異常ではない |
 | Vision | `DISABLED` | 現在未統合 |
-| Memory | `DISABLED` | Long-Term Memory未実装 |
+| Memory | `READY` | Phase F Owner-controlled; automatic promotion OFF |
+
+## Phase F Memory operations
+
+Open **Memory** in the Workspace. `Remembered`, `Candidates`, `Temporary`, `Character`, `Archived`, and `Settings` are distinct review views. Direct additions are active Owner records. Explicit remember requests appear as candidates and require **Approve**. Edit, Pin, Archive, Reject, Restore, scope, and character actions are reversible; Hard Delete is permanent and requires typing `DELETE`.
+
+If Memory reports unavailable, Chat intentionally continues without recalled context. Inspect the System subsystem status and application log for a generic failure class; do not paste private Memory content into logs or issue reports.
+
+Before database maintenance, stop SHION and back up `%SHION_DATA_ROOT%\data\conversations\shion_chat.db` plus matching `-wal` and `-shm` files. Restore them only while SHION is stopped. Runtime databases and backups are private artifacts and must not enter Git.
+
+## Context and generation diagnostics
+
+Open an assistant message's **Details** action to inspect content-free generation telemetry. `History omitted` means older turns were excluded only from that model call; the Conversation and SQLite records remain intact. The Phase F formal default is 6,144 input tokens with 128/512/2,048/4,096 adaptive output budgets; future input-budget adjustment requires real-use telemetry and Owner review. `stop_reason` is `eos`, `max_tokens`, `repetition_guard`, `owner_stop`, or `generation_complete`.
+
+High post-generation CUDA reservation alone does not authorize `empty_cache()` or model unload changes. Conditional CUDA cache release remains a future Performance Owner Gate; record idle/peak/post-settle VRAM and compare latency before proposing any policy change.
 
 ### Port確認
 

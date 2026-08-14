@@ -172,13 +172,27 @@ The Owner-gated migration stopped Voice processes, inventoried source and destin
 
 SQLite is sufficient for this single-owner local application. Schema version 1 defines `sessions`, `messages`, `message_parts`, `response_versions`, `favorites` and `feedback`, with optional future artifact/branch/export tables deferred. Connections enable foreign keys, WAL, a five-second busy timeout and explicit transactions. Phase 1.6 production startup enables the repository; unit tests retain an explicit disabled mode.
 
-The active location is `%SHION_DATA_ROOT%\data\conversations\shion_chat.db`. It is never served as a static file. Conversation History answers what was said in a session; Long-Term Memory remains a separate disabled subsystem and receives no automatic promotion.
+The active location is `%SHION_DATA_ROOT%\data\conversations\shion_chat.db`. It is never served as a static file. Conversation History answers what was said in a session; Phase F Long-Term Memory is a separate Owner-controlled context subsystem and receives no automatic promotion.
 
 ## Phase 1.6 persistence activation
 
 Owner approval activates schema-versioned SQLite history at `%SHION_DATA_ROOT%\data\conversations\shion_chat.db`. The database is the canonical source for sessions, messages, response versions, favorites and feedback. A completed user/assistant turn is committed atomically. Sidebar History, Search and Rename read and write this store; server restart and browser reload rehydrate it. `sessionStorage` now contains only the active session ID and unsent drafts, and `localStorage` remains unused.
 
-Regeneration adds a response version beneath the stable assistant-message identity. Selecting a version changes the canonical response used by model context while retaining earlier versions. Long-Term Memory remains a distinct disabled subsystem and receives no automatic promotion from History.
+Regeneration adds a response version beneath the stable assistant-message identity. Selecting a version changes the canonical response used by model context while retaining earlier versions. Long-Term Memory remains distinct and receives no automatic promotion from History.
+
+## Phase F Long-Term Memory
+
+Schema v4 adds Owner-controlled Memory records and immutable edit history to the Conversation SQLite database. Retrieval is deterministic, character/scope aware, bounded, and delivered to the model as a separate structured prompt layer. Chat remains available when Memory fails. See `shion_long_term_memory.md` for lifecycle, privacy, API, migration, and recovery rules.
+
+## Context and generation hardening
+
+Persistent Conversation History remains complete, but the model projection is independently budgeted. The initial Gemma/Heretic input budget is 6,144 tokens on the Owner RTX 5070 12 GB system. This is the Phase F formal default; any future adjustment is driven by real-use telemetry and Owner review. System, character, Memory, and current-message layers are mandatory and measured separately; only recent complete conversation turns fill the remaining budget. `RecentTurnContextStrategy` is replaceable by a future Owner-reviewed summary/compression strategy. Omitted turns remain visible and unchanged in SQLite and the Workspace.
+
+The registry's 4,096 `max_new_tokens` remains an absolute ceiling. Deterministic request intent selects practical limits: explicit short requests 128, normal conversation 512, explicit long-form 2,048, and explicit maximum-length requests up to 4,096. EOS/turn tokens and Owner Stop remain active. Heretic additionally uses a conservative repeated-block guard only after at least 96 generated tokens and four consecutive matching 12–128-token blocks.
+
+Generation metadata contains counts and timings only: exact input sequence length, included/omitted history, system/character/Memory/current-message tokens, output tokens, prompt and generation time, tokens/sec, selected budgets, and stop reason. It never exposes message content or private reasoning. No per-turn `empty_cache()` or model unload was introduced; conditional CUDA cache release remains a future Performance Owner Gate.
+
+Owner RTX 5070 validation after restart: the fixed short request completed in 0.426 seconds with 26 input / 5 output tokens and EOS; the 25k-token Conversation clone projected only 4,183 tokens, omitted 21,209 history tokens, and completed in 3.335 seconds. A normal request produced 69 tokens in 5.005 seconds; explicit long-form selected the 2,048 budget and produced 1,269 tokens in 89.277 seconds. Owner Stop recorded `owner_stop`, and live Voice contention observed `WAITING_FOR_GPU` before returning both Gate and runtime to Ready.
 
 Schema migration failures are surfaced as `History UNAVAILABLE` through `/api/status`; chat generation remains usable through an explicit ephemeral fallback. Connections enforce foreign keys, WAL, a five-second busy timeout and explicit transactions.
 
