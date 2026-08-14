@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Callable
 
 from app.core.orchestrator import ShionOrchestrator
+from app.core.gpu_resource_gate import GpuResourceGate
 from app.core.session import SessionStore
 from app.core.state import RuntimeState
 from app.models.loader import load_conversation_model
@@ -21,9 +22,19 @@ LOG = logging.getLogger("shion_web")
 
 
 def conversation_title(message: str, limit: int = 24) -> str:
-    """Create a cheap, deterministic Japanese-friendly title from the first message."""
+    """Create a cheap semantic Japanese title; model title inference remains optional."""
     compact = " ".join(message.replace("\u3000", " ").split()).strip()
     compact = compact.lstrip("#*-・• ").rstrip("。！？!?.,、 ")
+    for lead in ("今日ちょっと聞きたいんだけど", "ちょっと聞きたいんだけど", "相談したいんだけど", "お願いしたいんだけど", "教えてほしいんだけど"):
+        if compact.startswith(lead): compact = compact[len(lead):].lstrip("、, ")
+    lowered = compact.lower()
+    if "香港" in compact and "出張" in compact:
+        return "香港出張の準備" if any(word in compact for word in ("準備", "予定", "計画")) else "香港出張"
+    if any(word in lowered for word in ("shion ui", "shionのui", "shion ui")) and any(word in compact for word in ("改修", "改善", "修正")):
+        return "SHION UI改修"
+    if any(word in compact for word in ("音声", "声")) and any(word in compact for word in ("調整", "改善", "チューニング")):
+        subject = "紫苑" if "紫苑" in compact else "Nene" if "Nene" in compact else "SHION"
+        return f"{subject}の音声調整"
     for separator in ("。", "！", "？", "!", "?", "\n"):
         compact = compact.split(separator, 1)[0].strip()
     if not compact:
@@ -46,6 +57,7 @@ class ShionRuntime:
         self.state_lock = threading.Lock()
         self.conversations = conversations
         self.persistence_error: str | None = None
+        self.gpu_gate: GpuResourceGate | None = None
 
     @property
     def histories(self) -> dict:
@@ -90,6 +102,8 @@ class ShionRuntime:
         if self.state != RuntimeState.READY or self.runtime is None:
             raise RuntimeError("モデルはまだ準備中です。")
         history = self._history(session_id, mode)
+        if self.gpu_gate:
+            self.gpu_gate.begin_llm()
         self.state = RuntimeState.GENERATING
         started = time.perf_counter()
         try:
@@ -122,6 +136,8 @@ class ShionRuntime:
             return result
         finally:
             self.state = RuntimeState.READY
+            if self.gpu_gate:
+                self.gpu_gate.end_llm()
 
     def regenerate(self, session_id: str, mode: str, message_id: str | None = None) -> dict:
         history = self._history(session_id, mode)

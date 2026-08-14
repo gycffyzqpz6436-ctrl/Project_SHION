@@ -3,6 +3,7 @@
   "character_id": "shion",
   "display_name": "SHION",
   "display_name_ja": "紫苑",
+  "canonical_reference": "/docs/character/character_bible.md",
   "renderer": {
     "type": "static_2d",
     "asset_set": "official_static_2d_v1",

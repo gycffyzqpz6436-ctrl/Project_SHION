@@ -14,6 +14,8 @@ const ui = {
   mobileNav: $("mobile-nav-toggle"), mobileCharacter: $("mobile-character-toggle"), characterPanel: $("shion-panel"), characterClose: $("character-close"), scrim: $("mobile-scrim"),
   archiveDialog: $("archive-dialog"), archiveTitle: $("archive-title"), archiveConfirm: $("archive-confirm"),
   renderer: $("character-renderer"), monitorConversation: $("monitor-conversation"), monitorVoice: $("monitor-voice"), monitorModel: $("monitor-model"), monitorPreset: $("monitor-preset"),
+  floating: $("floating-assistant"), floatingToggle: $("floating-toggle"), floatingCard: $("floating-card"), floatingClose: $("floating-close"), floatingForm: $("floating-form"), floatingInput: $("floating-input"), floatingMessages: $("floating-messages"),
+  connectionActions: $("connection-actions"), connectionRetry: $("connection-retry"), connectionReload: $("connection-reload"), currentCharacter: $("current-character"),
 };
 
 function createSessionId() {
@@ -35,8 +37,13 @@ let lastUserMessage = "";
 let reconnecting = false;
 let composing = false;
 let messageCount = 0;
+let autoFollow = true;
+let programmaticScroll = false;
+let workspacePreferences = {layout: "auto", typewriter: true, auto_scroll: true, enter_behavior: "desktop-send", markdown: true};
+try { workspacePreferences = {...workspacePreferences, ...JSON.parse(sessionStorage.getItem("shion-workspace-preferences:v1") || "{}")}; } catch {}
 let voiceMeta = {approved_presets: [], developer_models: {}};
 let activeAudio = null;
+const pendingVoiceRequests = new Map();
 const characterProfiles = {shion: "/assets/characters/shion/profile.json"};
 const fallbackCharacterAsset = "/assets/shion/avatar.svg";
 let activeCharacter = {character_id: "shion", renderer: {type: "static_2d"}, assets: {avatar: fallbackCharacterAsset, panel: fallbackCharacterAsset}, presentation_states: {}};
@@ -137,13 +144,21 @@ function renderSidebar() {
     const button = document.createElement("button");
     button.type = "button"; button.className = "session-item";
     button.classList.toggle("current", session.session_id === activeSessionId);
-    button.innerHTML = `<span></span><p>${escapeHtml(session.title)}<br><small>${new Date(session.created_at).toLocaleString()}</small></p>`;
+    button.title = session.title;
+    button.innerHTML = `<span></span><p>${escapeHtml(session.title)}</p>`;
     button.addEventListener("click", () => switchSession(session.session_id));
+    const menu = document.createElement("details"); menu.className = "session-menu";
+    const summary = document.createElement("summary"); summary.setAttribute("aria-label", `Conversation menu for ${session.title}`); summary.textContent = "⋯";
+    const commands = document.createElement("div"); commands.className = "session-menu-popover";
     const rename = actionButton("Rename", "rename-session", "Rename session");
     rename.addEventListener("click", () => beginRename(row, session));
     const archive = actionButton("Archive", "archive-session", "Archive conversation");
     archive.addEventListener("click", () => confirmArchive(session));
-    row.append(button, rename, archive); ui.sessionList.appendChild(row);
+    for (const label of ["Pin / Unpin", "Favorite", "Export", "Duplicate / Branch", "Delete"]) {
+      const unavailable = actionButton(label, "unavailable-session-action", `${label} is not implemented`); unavailable.disabled = true; commands.append(unavailable);
+    }
+    commands.prepend(rename); commands.append(archive); menu.append(summary, commands);
+    row.append(button, menu); ui.sessionList.appendChild(row);
   }
 }
 
@@ -231,9 +246,17 @@ function plainText(content) {
   return contentParts(content).filter((part) => part.type === "text").map((part) => part.text).join("\n");
 }
 
+function compactAssistantResponse(value, limit = 520) {
+  const text = String(value || "").trim();
+  if (text.length <= limit) return text;
+  const clipped = text.slice(0, limit);
+  const boundary = Math.max(clipped.lastIndexOf("。"), clipped.lastIndexOf("！"), clipped.lastIndexOf("？"), clipped.lastIndexOf("\n"));
+  return `${clipped.slice(0, boundary > limit * .55 ? boundary + 1 : limit).trim()}\n\n続きはFull Chatで話そう。`;
+}
+
 function typewriterText(bubble, content, keepFollowing) {
   const text = plainText(content), reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (reduced || !text || contentParts(content).some((part) => part.type !== "text")) {
+  if (reduced || !workspacePreferences.typewriter || !text || contentParts(content).some((part) => part.type !== "text")) {
     bubble.innerHTML = contentParts(content).map(renderPart).join("");
     return Promise.resolve();
   }
@@ -247,7 +270,7 @@ function typewriterText(bubble, content, keepFollowing) {
       const chunk = Math.max(1, Math.ceil(characters.length / 180));
       index = Math.min(characters.length, index + chunk);
       bubble.textContent = characters.slice(0, index).join("");
-      if (keepFollowing) ui.messages.scrollTop = ui.messages.scrollHeight;
+      if (keepFollowing && autoFollow) scrollToLatest();
       else ui.jump.hidden = false;
       if (index < characters.length) setTimeout(step, 18);
       else {
@@ -325,31 +348,51 @@ async function generateVoice(row, record, retry = false) {
     row.querySelector(".message-body").append(notice); return;
   }
   const inline = row.querySelector(".voice-inline") || document.createElement("div");
-  inline.className = "voice-inline"; inline.textContent = "Generating voice..."; row.querySelector(".message-body").append(inline);
-  ui.voiceStatus.textContent = "Voice GENERATING"; ui.monitorVoice.textContent = "Generating";
+  inline.className = "voice-inline"; inline.textContent = "会話生成完了後に音声を生成します"; row.querySelector(".message-body").append(inline);
+  ui.voiceStatus.textContent = "Voice WAITING_FOR_GPU"; ui.monitorVoice.textContent = "Waiting for GPU";
   const payload = {session_id: activeSessionId, message_id: row.dataset.messageId, response_version: voiceVersion(row), retry};
   if (selection.startsWith("preset:")) payload.preset_id = selection.slice(7);
   else if (selection === "model:F1" || (ui.voiceDeveloper.checked && selection.startsWith("model:"))) {
     payload.developer_model = selection.slice(6);
     if (ui.voiceStyle.value) payload.developer_style = ui.voiceStyle.value;
   }
+  const requestKey = `${payload.message_id}:${payload.response_version}:${payload.preset_id || `${payload.developer_model}:${payload.developer_style || ""}`}`;
+  if (pendingVoiceRequests.has(requestKey)) return pendingVoiceRequests.get(requestKey).promise;
+  const controller = new AbortController();
   try {
-    const response = await fetch("/api/voice/generate", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});
+    const promise = fetch("/api/voice/generate", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload), signal: controller.signal});
+    pendingVoiceRequests.set(requestKey, {controller, payload, promise});
+    const response = await promise;
     const data = await response.json(); if (!response.ok) throw new Error(data.error || "Voice generation failed");
     record.voice_artifacts = [...(record.voice_artifacts || []), data];
     const audio = document.createElement("audio"); audio.controls = true; audio.preload = "metadata"; audio.src = data.audio_url;
-    audio.addEventListener("play", () => { if (activeAudio && activeAudio !== audio) activeAudio.pause(); activeAudio = audio; ui.monitorVoice.textContent = "Speaking"; ui.renderer.classList.add("speaking"); ui.renderer.dataset.presentationState = "speaking"; applyCharacterAssets(ui.renderer); });
-    audio.addEventListener("ended", () => { ui.monitorVoice.textContent = "Ready"; ui.renderer.classList.remove("speaking"); ui.renderer.dataset.presentationState = "idle"; applyCharacterAssets(ui.renderer); });
-    audio.addEventListener("pause", () => { if (!audio.ended) { ui.monitorVoice.textContent = "Ready"; ui.renderer.classList.remove("speaking"); ui.renderer.dataset.presentationState = "idle"; applyCharacterAssets(ui.renderer); } });
+    audio.addEventListener("play", () => { if (activeAudio && activeAudio !== audio) activeAudio.pause(); activeAudio = audio; ui.monitorVoice.textContent = "Speaking"; ui.monitorConversation.textContent = "SPEAKING"; $("monitor-message").textContent = "声で話してるよ。"; ui.renderer.classList.add("speaking"); ui.renderer.dataset.presentationState = "speaking"; applyCharacterAssets(ui.renderer); });
+    audio.addEventListener("ended", () => { ui.monitorVoice.textContent = "Ready"; ui.monitorConversation.textContent = "READY"; $("monitor-message").textContent = "ここにいるよ。話したくなったら、いつでも呼んで。"; ui.renderer.classList.remove("speaking"); ui.renderer.dataset.presentationState = "idle"; applyCharacterAssets(ui.renderer); });
+    audio.addEventListener("pause", () => { if (!audio.ended) { ui.monitorVoice.textContent = "Ready"; ui.monitorConversation.textContent = "READY"; ui.renderer.classList.remove("speaking"); ui.renderer.dataset.presentationState = "idle"; applyCharacterAssets(ui.renderer); } });
     const retryButton = actionButton("Retry Voice", "retry-voice"); retryButton.addEventListener("click", () => generateVoice(row, record, true));
     inline.replaceChildren(audio, retryButton, document.createTextNode(` ${data.voice_model_id} · ${data.duration}s · attempt ${data.attempt}`));
     ui.voiceStatus.textContent = "Voice READY"; ui.monitorVoice.textContent = "Ready";
+    if (autoFollow) scrollToLatest();
     if (ui.voiceAutoplay.checked) audio.play().catch(() => { ui.voiceStatus.textContent = "Auto Play requested · tap Play to enable audio"; });
   } catch (error) {
+    if (error.name === "AbortError") { inline.textContent = "Voice request cancelled"; return; }
     inline.textContent = `Voice failed: ${error.message} `;
     const retryButton = actionButton("Retry Voice", "retry-voice"); retryButton.addEventListener("click", () => generateVoice(row, record, true)); inline.append(retryButton);
     ui.voiceStatus.textContent = "Voice ERROR"; ui.monitorVoice.textContent = "Error";
+  } finally {
+    pendingVoiceRequests.delete(requestKey);
   }
+}
+
+async function cancelQueuedVoice(sessionId, filter = {}) {
+  const matches = ({payload}) => payload.session_id === sessionId
+    && (filter.message_id === undefined || payload.message_id === filter.message_id)
+    && (filter.response_version === undefined || payload.response_version === filter.response_version);
+  for (const request of [...pendingVoiceRequests.values()].filter(matches)) request.controller.abort();
+  try {
+    await fetch("/api/voice/queue/cancel", {method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({session_id:sessionId,...filter})});
+  } catch {}
 }
 
 function addMessage(role, content, options = {}) {
@@ -367,7 +410,7 @@ function addMessage(role, content, options = {}) {
   body.className = "message-body";
   const bubble = document.createElement("div");
   bubble.className = "bubble";
-  const followTypewriter = nearLatest();
+  const followTypewriter = autoFollow;
   if (!options.typewriter) bubble.innerHTML = contentParts(content).map(renderPart).join("");
   body.appendChild(bubble);
 
@@ -439,7 +482,7 @@ function addMessage(role, content, options = {}) {
   row.typewriterDone = options.typewriter ? typewriterText(bubble, content, followTypewriter) : Promise.resolve();
   messageCount += options.temporary ? 0 : 1;
   updateSessionInfo();
-  if (nearLatest()) ui.messages.scrollTop = ui.messages.scrollHeight;
+  if (autoFollow) scrollToLatest();
   else ui.jump.hidden = false;
   if (!options.temporary && options.persist !== false) {
     const session = activeSession();
@@ -458,7 +501,8 @@ function setStatus(state) {
   else if (key === "generating" || key === "loading model" || key === "connecting") ui.dot.classList.add("generating");
   else if (key === "error" || key === "offline") ui.dot.classList.add("error");
   const ready = state === "Ready";
-  ui.monitorConversation.textContent = state;
+  ui.monitorConversation.textContent = state === "Generating" || state === "Loading model" ? "THINKING" : state.toUpperCase();
+  $("monitor-message").textContent = state === "Generating" ? "考え中。ちゃんと返すから、少し待ってて。" : state === "Ready" ? "ここにいるよ。話したくなったら、いつでも呼んで。" : "SHIONの準備状態を確認しています。";
   ui.renderer.dataset.presentationState = state === "Generating" || state === "Loading model" ? "generating" : "idle";
   applyCharacterAssets(ui.renderer);
   ui.renderer.classList.toggle("generating", state === "Generating" || state === "Loading model");
@@ -487,7 +531,7 @@ function renderModelInfo(data) {
   if (activeSession() && !activeSession().model_alias) { activeSession().model_alias = data.model_alias; persistSessions(); }
   ui.summary.textContent = `Model: ${data.display_name} · Mode: ${ui.mode.options[ui.mode.selectedIndex].text}`;
   ui.badge.hidden = !/Experimental|Third-party/i.test(data.provenance || "");
-  ui.monitorModel.textContent = data.display_name || data.model_alias || "Unavailable";
+  ui.monitorModel.textContent = ui.mode.options[ui.mode.selectedIndex]?.text || "Normal";
   const fields = [
     ["Repository", data.repo_id], ["Revision", data.revision], ["Parent", data.parent_model],
     ["Base origin:", data.base_origin || "not specified"], ["Provenance", data.provenance],
@@ -525,8 +569,9 @@ async function poll(initializing = false) {
     const data = await response.json();
     if (!data.state) throw new Error("status response has no model state");
     populateModels(data.models || []);
-    setStatus(data.state);
+    setStatus(busy && data.state === "Ready" ? "Generating" : data.state);
     ui.connection.textContent = reconnecting ? "Reconnected" : "Connected";
+    ui.connectionActions.hidden = true;
     reconnecting = false;
     renderSubsystems(data.capabilities || {}, data.history || {}, data.voice || {});
     if (data.history?.state === "UNAVAILABLE") ui.connection.textContent = `Persistence unavailable: ${data.history.error || "database error"}`;
@@ -538,6 +583,7 @@ async function poll(initializing = false) {
     reconnecting = true;
     setStatus("Offline");
     ui.connection.textContent = "Reconnecting";
+    ui.connectionActions.hidden = false;
     ui.summary.textContent = `${initializing ? "Initialization failed" : "Connection failed"}: ${error?.message || "unknown error"}`;
   }
 }
@@ -547,6 +593,7 @@ async function stopGeneration() {
   ui.send.disabled = true;
   ui.send.textContent = "Stopping...";
   try {
+    await cancelQueuedVoice(activeSessionId);
     await fetch("/api/stop", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({session_id: activeSessionId})});
   } finally {
     ui.send.disabled = false;
@@ -571,10 +618,11 @@ async function send(event) {
   lastUserMessage = message;
   activeSession().draft = ""; persistSessions();
   busy = true;
+  autoFollow = workspacePreferences.auto_scroll;
   ui.input.value = "";
   ui.input.style.height = "auto";
   addMessage("user", message);
-  const waiting = addMessage("assistant", "SHION is thinking...", {temporary: true});
+  const waiting = addMessage("assistant", "SHION THINKING", {temporary: true});
   setStatus("Generating");
   try {
     const data = await requestChat(message);
@@ -598,6 +646,7 @@ async function send(event) {
 
 async function regenerateLast(oldRow) {
   if (busy || oldRow !== document.querySelector(".message.assistant:last-of-type")) return;
+  await cancelQueuedVoice(activeSessionId, {message_id: oldRow.dataset.messageId, response_version: voiceVersion(oldRow)});
   busy = true;
   setStatus("Generating");
   try {
@@ -626,6 +675,8 @@ async function regenerateLast(oldRow) {
 }
 
 async function selectResponseVersion(row, record) {
+  const previous = activeSession().messages.find((item) => item.version_group === record.version_group && item.selected_version);
+  if (previous?.metadata?.message_id) await cancelQueuedVoice(activeSessionId, {message_id: previous.metadata.message_id, response_version: previous.metadata.response_version || 1});
   const response = await fetch("/api/response/select", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({session_id: activeSessionId, mode: ui.mode.value, response: plainText(record.content)})});
   if (!response.ok) { addMessage("assistant", "Response version selection failed."); return; }
   for (const item of activeSession().messages.filter((item) => item.version_group === record.version_group)) item.selected_version = item === record;
@@ -657,6 +708,7 @@ async function retryLast(row) {
 
 async function newChat() {
   if (busy) return;
+  if (activeSessionId) await cancelQueuedVoice(activeSessionId);
   const session = createSession();
   const response = await fetch("/api/sessions", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({session_id: session.session_id, mode: session.mode})});
   if (!response.ok) { ui.connection.textContent = "Persistence unavailable"; return; }
@@ -671,11 +723,13 @@ function renderSession() {
   ui.mode.value = session.mode;
   ui.input.value = session.draft || "";
   for (const record of session.messages) addMessage(record.role, record.content, {metadata: record.metadata, regeneratable: record.regeneratable, record, persist: false});
+  autoFollow = true; scrollToLatest();
   renderSidebar(); updateSessionInfo();
 }
 
 async function switchSession(sessionId) {
   if (busy || sessionId === activeSessionId) return;
+  await cancelQueuedVoice(activeSessionId);
   activeSession().draft = ui.input.value;
   activeSessionId = sessionId;
   await hydrateSession(sessionId);
@@ -692,7 +746,15 @@ function nearLatest() {
   return ui.messages.scrollHeight - ui.messages.scrollTop - ui.messages.clientHeight < 120;
 }
 
+function scrollToLatest() {
+  programmaticScroll = true;
+  ui.messages.scrollTop = ui.messages.scrollHeight;
+  ui.jump.hidden = true;
+  requestAnimationFrame(() => { programmaticScroll = false; });
+}
+
 const workspacePages = {
+  home: ["Project SHION", "Personal AI Assistant", "SHIONと会話、Voice、Character、Systemの現在地を確認できます。"],
   room: ["SHION Room", "Coming Soon", "Character interaction and relationship systems are not implemented in Phase A–C."],
   voice: ["Voice Lab", "Foundation", "Full Voice Console migration is deferred. Current SHION Default and playback controls remain available in Chat."],
   image: ["Image Lab", "Not Integrated", "No image-generation backend is enabled or started."],
@@ -702,25 +764,123 @@ const workspacePages = {
   settings: ["Settings", "Foundation", "Workspace settings are reserved. Voice and model controls remain in Chat for this phase."],
 };
 
+function metricCard(label, value, detail = "") { return `<div class="metric-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value ?? "Unavailable")}</strong><p>${escapeHtml(detail)}</p></div>`; }
+
+async function renderHomePage() {
+  const response = await fetch("/api/dashboard", {cache: "no-store"}); if (!response.ok) return;
+  const data = await response.json(), article = ui.pageSlot.querySelector("article");
+  const recent = data.recent_conversations || [], latest = recent[0];
+  article.innerHTML = `<div class="dashboard-hero home-presence"><img data-character-asset="panel" alt="SHION"><div><p class="panel-eyebrow">PERSONAL AI ASSISTANT SHION</p><h2>おかえり、お兄さん。</h2><p class="assistant-note">${data.runtime.state === "Ready" ? "準備できてるよ。前の続きでも、新しい話でもどうぞ。" : "いま準備中。状態はChatで確認できるよ。"}</p><div class="home-primary-actions">${latest ? `<button data-session-link="${escapeHtml(latest.session_id)}">Continue conversation</button>` : ""}<button id="home-new-chat">New Chat</button></div></div></div><section class="quick-access-grid"><a href="#/room"><strong>SHION Room</strong><span>紫苑と触れ合う空間 · Foundation</span></a><a href="#/voice"><strong>Voice Lab</strong><span>Nene V3 / Bright</span></a><a href="#/characters"><strong>Character</strong><span>Official SHION profile</span></a><a href="#/chat"><strong>Chat</strong><span>${escapeHtml(data.runtime.model_alias || "Heretic default")}</span></a></section><section><h3>Recent conversations</h3><div class="recent-list">${recent.length ? recent.map(item => `<button data-session-link="${escapeHtml(item.session_id)}"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.updated_at)}</small></button>`).join("") : "<p>まだ会話はありません。</p>"}</div></section>`;
+  applyCharacterAssets(article);
+  for (const button of article.querySelectorAll("[data-session-link]")) button.addEventListener("click", async () => { location.hash = "#/chat"; await switchSession(button.dataset.sessionLink); });
+  article.querySelector("#home-new-chat")?.addEventListener("click", async () => { await newChat(); location.hash = "#/chat"; });
+}
+
+async function renderCharactersPage() {
+  const response = await fetch("/api/characters/shion", {cache: "no-store"}); if (!response.ok) return;
+  const character = await response.json(), article = ui.pageSlot.querySelector("article");
+  article.innerHTML = `<div class="character-profile-page"><img class="character-master" data-character-asset="master" alt="Official SHION master"><div><p class="panel-eyebrow">CHARACTER MANAGEMENT</p><h2>${escapeHtml(character.display_name)} <span>${escapeHtml(character.display_name_ja)}</span></h2><p>現在正式登録されているPersonal AI CharacterはSHIONだけです。Header avatarが将来のselector入口になります。</p><button type="button" disabled>Active Character · SHION</button><dl class="profile-facts"><div><dt>Static 2D</dt><dd>${escapeHtml(character.asset_set.id)} · ${escapeHtml(character.asset_set.version)}</dd></div><div><dt>Conversation model</dt><dd>${escapeHtml(character.default_model)}</dd></div><div><dt>Voice</dt><dd>${escapeHtml(character.default_voice.preset_id)} · Nene V3 · ${escapeHtml(character.default_voice.style)}</dd></div><div><dt>Renderer</dt><dd>${escapeHtml(character.renderer.type)} · Live2D/3D replaceable</dd></div><div><dt>Subsystems</dt><dd>Conversation READY · Voice AVAILABLE · Owner Memory DISABLED</dd></div></dl><p class="feature-note">NONO / 美月は未登録です。未確定情報をfake表示しません。</p></div></div>`;
+  applyCharacterAssets(article);
+}
+
+async function renderSystemPage() {
+  const response = await fetch("/api/system", {cache: "no-store"}); if (!response.ok) return;
+  const data = await response.json(), article = ui.pageSlot.querySelector("article");
+  const meter = (label, used, total, detail) => `<div class="system-meter"><div><strong>${label}</strong><span>${escapeHtml(detail)}</span></div><progress max="${Number(total) || 1}" value="${Number(used) || 0}"></progress></div>`;
+  const ramUsed = data.ram.total_mib && data.ram.available_mib ? data.ram.total_mib - data.ram.available_mib : 0;
+  const storageUsed = data.storage.total_gib - data.storage.free_gib;
+  article.innerHTML = `<div class="system-console"><header><div><p class="panel-eyebrow">LOCAL MONITORING CONSOLE</p><h2>System</h2></div><button id="system-refresh" type="button">Refresh</button></header><p>手動更新の最小telemetry。秘密情報・credential・private pathは表示しません。</p><div class="core-status"><div><span>SHION CORE</span><strong>${escapeHtml(data.server.state)}</strong></div><div><span>CONVERSATION</span><strong>${escapeHtml(data.conversation.state || data.sqlite.state)}</strong></div><div><span>VOICE</span><strong>${escapeHtml(data.voice.state)}</strong></div><div><span>IMAGE</span><strong>${escapeHtml(data.image.state)}</strong></div><div><span>MEMORY</span><strong>FOUNDATION · DISABLED</strong></div></div><section class="resource-meters">${meter("GPU VRAM", data.gpu.used_mib, data.gpu.total_mib, data.gpu.state === "AVAILABLE" ? `${data.gpu.used_mib} / ${data.gpu.total_mib} MiB` : data.gpu.state)}${meter("RAM", ramUsed, data.ram.total_mib, data.ram.state === "AVAILABLE" ? `${ramUsed} / ${data.ram.total_mib} MiB` : data.ram.state)}${meter("Storage", storageUsed, data.storage.total_gib, `${storageUsed.toFixed(1)} / ${data.storage.total_gib} GiB`)}</section><div class="system-foot">SQLite ${escapeHtml(data.sqlite.state)} · schema ${escapeHtml(data.sqlite.schema_version || "—")} · Voice preset SHION Default · Processes ${escapeHtml(data.processes.shion_server)}</div></div>`;
+  article.querySelector("#system-refresh").addEventListener("click", renderSystemPage);
+}
+
+function renderRoomPage() {
+  const article = ui.pageSlot.querySelector("article");
+  article.innerHTML = `<div class="room-shell" data-room-background="night"><img data-character-asset="master" alt="SHION in her room"><div class="room-copy"><p class="panel-eyebrow">SHION ROOM · INTERACTION FOUNDATION</p><h2>紫苑の部屋</h2><p>SHION本人と触れ合い、いつでもPersonal AI Assistantとの会話へ戻れる空間です。Characters pageは管理、Roomは体験という役割に分離しています。</p><button id="room-talk">話しかける</button><div class="room-shortcuts"><button id="room-greeting" type="button">「おかえり」</button><button disabled>Short interaction · Coming Soon</button></div><div class="room-slots"><span>Character status · Ready</span><span>Outfit slot · Foundation</span><span>Room customization · Foundation</span><span>Relationship feature · Not integrated</span></div></div></div>`;
+  applyCharacterAssets(article);
+  article.querySelector("#room-talk").addEventListener("click", () => { location.hash = "#/chat"; });
+  article.querySelector("#room-greeting").addEventListener("click", () => { ui.floating.hidden = false; ui.floatingCard.hidden = false; ui.floatingToggle.setAttribute("aria-expanded", "true"); ui.floatingMessages.insertAdjacentHTML("beforeend", "<p>おかえり、お兄さん。今日はどうする？</p>"); });
+}
+
+function renderMemoryPage() {
+  const article = ui.pageSlot.querySelector("article");
+  const category = (title, items) => `<section class="memory-category"><header><h3>${title}</h3><span>0 approved</span></header><ul>${items.map(item => `<li>${item}<small>No memory stored</small></li>`).join("")}</ul></section>`;
+  article.innerHTML = `<div class="foundation-header"><div><p class="panel-eyebrow">OWNER MEMORY · FOUNDATION</p><h2>Memory</h2><p>SHIONの人格資料とは分離されたOwner Memory設計です。Long-Term Memory backendとautomatic promotionはOFFです。</p></div><span class="page-status">DISABLED</span></div><div class="memory-controls"><span>Proposed</span><span>Approved</span><span>Pinned</span><span>Archived</span></div><div class="memory-grid">${category("Owner Profile", ["Basic profile", "Preferred address", "Communication preferences", "Important preferences"])}${category("Preferences", ["Food", "Entertainment", "Technology", "Style", "Other interests"])}${category("Projects & Goals", ["Active projects", "Goals", "Decisions", "Progress"])}${category("Routines", ["Recurring activities", "Working patterns"])}${category("Shared Context", ["Important past interactions", "Shared decisions", "Important moments"])}${category("Assistant Working Preferences", ["Response preferences", "Tool preferences", "Workflow preferences"])}</div><aside class="memory-policy"><strong>Memory Control</strong><p>Future records require source/provenance, created/updated dates, Owner approval, pin/archive state and explicit visibility. Conversation History is not Memory.</p><button type="button" disabled>Add memory · Backend not integrated</button></aside>`;
+}
+
+function saveWorkspacePreferences() {
+  sessionStorage.setItem("shion-workspace-preferences:v1", JSON.stringify(workspacePreferences));
+  applyLayoutPreference();
+}
+
+function applyLayoutPreference() {
+  ui.workspace.classList.toggle("layout-force-mobile", workspacePreferences.layout === "mobile");
+  ui.workspace.classList.toggle("layout-force-desktop", workspacePreferences.layout === "desktop");
+}
+
+function renderSettingsPage() {
+  const article = ui.pageSlot.querySelector("article");
+  const category = (name, body) => `<section class="settings-section"><h3>${name}</h3>${body}</section>`;
+  article.innerHTML = `<div class="foundation-header"><div><p class="panel-eyebrow">WORKSPACE PREFERENCES</p><h2>Settings</h2><p>利用可能な項目だけがこのbrowser sessionへ反映されます。未統合backend設定は明示的に無効です。</p></div><span class="page-status">FOUNDATION</span></div><div class="settings-grid">${category("General", `<label>Language<select disabled><option>日本語</option></select></label><label>Startup page<select disabled><option>Chat · fixed</option></select></label><label>Layout<select id="setting-layout"><option value="auto">Auto</option><option value="mobile">Mobile</option><option value="desktop">Desktop</option></select></label>`)}${category("Chat", `<label><input id="setting-typewriter" type="checkbox"> Typewriter presentation</label><label><input id="setting-autoscroll" type="checkbox"> Auto-scroll after send</label><label>Enter behavior<select id="setting-enter"><option value="desktop-send">Desktop sends · Mobile newline</option><option value="newline">Always newline</option></select></label><label><input type="checkbox" checked disabled> Markdown rendering</label>`)}${category("Character", `<label>Active character<select disabled><option>SHION · only registered character</option></select></label><label>Renderer<select disabled><option>Official Static 2D</option></select></label><label><input type="checkbox" checked disabled> Presence panel</label>`)}${category("Model", `<label>Default conversation model<input value="gemma4_12b_heretic_ja_v2_manual" readonly></label><p>UI・backend parser・new session fallbackは同じaliasです。</p>`)}${category("Voice", `<label>Default preset<input value="SHION Default · Nene V3 · Bright" readonly></label><p>Auto PlayはChat Voice panelで変更できます。</p>`)}${category("Memory", `<label><input type="checkbox" disabled> Enable Long-Term Memory</label><p>Disabled · Owner approval policy required.</p>`)}${category("Storage", `<p>Conversation usage: Systemで確認</p><p>Voice artifact usage: Voice Labで確認</p>`)}${category("Privacy & Security", `<p>Localhost-only · Tailscale Host/Origin policy active.</p><p>Future Companion permissions: screen, window title, selected text and app state are individually default OFF.</p>`)}${category("Advanced", `<button type="button" disabled>Developer settings · Not integrated</button>`)}</div>`;
+  const layout = article.querySelector("#setting-layout"), typewriter = article.querySelector("#setting-typewriter"), autoscroll = article.querySelector("#setting-autoscroll"), enter = article.querySelector("#setting-enter");
+  layout.value = workspacePreferences.layout; typewriter.checked = workspacePreferences.typewriter; autoscroll.checked = workspacePreferences.auto_scroll; enter.value = workspacePreferences.enter_behavior;
+  layout.addEventListener("change", () => { workspacePreferences.layout = layout.value; saveWorkspacePreferences(); });
+  typewriter.addEventListener("change", () => { workspacePreferences.typewriter = typewriter.checked; saveWorkspacePreferences(); });
+  autoscroll.addEventListener("change", () => { workspacePreferences.auto_scroll = autoscroll.checked; saveWorkspacePreferences(); });
+  enter.addEventListener("change", () => { workspacePreferences.enter_behavior = enter.value; saveWorkspacePreferences(); });
+}
+
+function renderVoiceLabPage() {
+  const article = ui.pageSlot.querySelector("article");
+  const parameter = (name, label, min, max, step, value, low, high) => `<div class="lab-parameter" data-parameter="${name}"><header><label for="lab-${name}">${label}</label><output>${value}</output><button type="button" data-reset="${name}">Reset</button></header><input id="lab-${name}" name="${name}" type="range" min="${min}" max="${max}" step="${step}" value="${value}"><div class="range-labels"><span>${low}</span><span>${high}</span></div></div>`;
+  article.innerHTML = `<div class="foundation-header"><div><p class="panel-eyebrow">VOICE LAB · OWNER TEST</p><h2>Nene V3 · Bright</h2><p>SHION Defaultは変更されません。値はこのtest generationだけに適用されます。</p></div><span class="page-status">APPROVED PRESET</span></div><p class="feature-note">Available styles: Bright is the Owner-approved default. Neutral / Soft remain Developer Voice choices and are not silently applied.</p><form id="voice-lab-form" class="lab-form"><section class="pronunciation-lab"><h3>Pronunciation Lab</h3><label>Conversation display text<textarea id="lab-display" maxlength="500">ざこの発音を確認するよ。</textarea></label><label>TTS transformation<textarea id="lab-tts" maxlength="500">ざこの発音を確認するよ。</textarea></label><p id="lab-preview">Replacement preview: 変更なし</p><p class="support-note">Accent phrase / phoneme direct control: Not supported by the verified Workspace adapter. Dictionary persistence: Owner Gate. Conversation text is never rewritten.</p></section><section><h3>Voice Character Map</h3><div class="parameter-grid">${parameter("style_weight","Expression",0,2,.1,1,"Calm","Expressive")}${parameter("length","Tempo",.7,1.5,.05,1,"Fast","Slow")}${parameter("pitch_scale","Pitch",.8,1.2,.05,1,"Low","High")}${parameter("intonation_scale","Intonation",.5,1.5,.05,1,"Calm","Expressive")}</div></section><div class="lab-actions"><button type="submit">Generate test Voice</button><button id="lab-retry" type="button">Retry current settings</button></div></form><div id="lab-result" class="lab-result" aria-live="polite"></div><section class="artifact-history"><header><div><h3>Voice Artifact History</h3><p id="lab-usage">0 artifacts · 0 bytes</p></div><div><select disabled aria-label="Artifact sort"><option>Newest first</option></select><button disabled>Delete selected · Owner Gate</button></div></header><div id="lab-history"><p>このbrowser sessionではまだ生成していません。自動削除は行いません。</p></div></section>`;
+  const formElement = article.querySelector("#voice-lab-form"), display = article.querySelector("#lab-display"), tts = article.querySelector("#lab-tts"), preview = article.querySelector("#lab-preview");
+  const artifacts = [];
+  const updatePreview = () => { preview.textContent = display.value === tts.value ? "Replacement preview: 変更なし" : `Replacement preview: 「${display.value}」→ TTS「${tts.value}」`; };
+  display.addEventListener("input", updatePreview); tts.addEventListener("input", updatePreview);
+  for (const control of article.querySelectorAll(".lab-parameter")) {
+    const input = control.querySelector("input"), output = control.querySelector("output"); input.addEventListener("input", () => { output.value = input.value; });
+    control.querySelector("button").addEventListener("click", () => { input.value = "1"; output.value = "1"; });
+  }
+  const restore = artifact => { for (const [key, value] of Object.entries(artifact.parameters)) { const input = formElement.elements[key]; input.value = value; input.dispatchEvent(new Event("input")); } tts.value = artifact.text_preview; updatePreview(); };
+  const renderArtifacts = () => {
+    const history = article.querySelector("#lab-history"), total = artifacts.reduce((sum, item) => sum + (item.file_size_bytes || 0), 0); article.querySelector("#lab-usage").textContent = `${artifacts.length} artifacts · ${total.toLocaleString()} bytes`;
+    history.innerHTML = artifacts.length ? artifacts.map((item, index) => `<article class="artifact-card"><header><time>${escapeHtml(item.created_at)}</time><button type="button" data-favorite="${index}" aria-label="Favorite artifact">${item.favorite ? "★" : "☆"}</button></header><p>${escapeHtml(item.text_preview || "")}</p><dl><div><dt>Model</dt><dd>${escapeHtml(item.voice_model_id)}</dd></div><div><dt>Style</dt><dd>${escapeHtml(item.voice_style)}</dd></div><div><dt>Duration</dt><dd>${item.duration}s</dd></div><div><dt>Size</dt><dd>${Number(item.file_size_bytes || 0).toLocaleString()} bytes</dd></div></dl><audio controls preload="metadata" src="${escapeHtml(item.audio_url)}"></audio><div class="artifact-actions"><button type="button" data-retry="${index}">Retry</button><button type="button" data-restore="${index}">Restore settings</button><button type="button" disabled>Delete · Owner Gate</button></div></article>`).join("") : "<p>このbrowser sessionではまだ生成していません。自動削除は行いません。</p>";
+    for (const button of history.querySelectorAll("[data-restore]")) button.addEventListener("click", () => restore(artifacts[Number(button.dataset.restore)]));
+    for (const button of history.querySelectorAll("[data-retry]")) button.addEventListener("click", () => { restore(artifacts[Number(button.dataset.retry)]); formElement.requestSubmit(); });
+    for (const button of history.querySelectorAll("[data-favorite]")) button.addEventListener("click", () => { const artifact = artifacts[Number(button.dataset.favorite)]; artifact.favorite = !artifact.favorite; renderArtifacts(); });
+  };
+  formElement.addEventListener("submit", async event => {
+    event.preventDefault(); const form = new FormData(event.currentTarget), result = article.querySelector("#lab-result"); result.innerHTML = '<span class="thinking-label">WAITING_FOR_GPU · 会話生成完了後に音声を生成します</span>';
+    const response = await fetch("/api/voice/lab/generate", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:createSessionId(),tts_text:tts.value,parameters:Object.fromEntries(["style_weight","length","pitch_scale","intonation_scale"].map(key=>[key,Number(form.get(key))]))})}); const data=await response.json();
+    if(!response.ok){result.innerHTML=`<p>${escapeHtml(data.error||"Voice generation failed")}</p><button id="lab-error-retry" type="button">Retry</button>`; result.querySelector("button").addEventListener("click",()=>formElement.requestSubmit()); return;}
+    artifacts.unshift({...data, favorite:false}); renderArtifacts(); result.innerHTML=`<audio controls autoplay src="${escapeHtml(data.audio_url)}"></audio><p>${escapeHtml(data.voice_preset_id)} · ${escapeHtml(data.voice_style)} · ${data.latency_seconds}s · ${data.duration}s</p>`;
+  });
+  article.querySelector("#lab-retry").addEventListener("click", () => formElement.requestSubmit());
+}
+
 function closeMobilePanels() {
   ui.sidebar.classList.remove("mobile-open"); ui.characterPanel.classList.remove("mobile-open");
   ui.mobileNav.setAttribute("aria-expanded", "false"); ui.mobileCharacter.setAttribute("aria-expanded", "false"); ui.scrim.hidden = true;
 }
 
-function renderRoute() {
+async function renderRoute() {
   const route = location.hash.replace(/^#\//, "") || "chat";
   const page = route === "chat" || workspacePages[route] ? route : "chat";
   ui.workspace.dataset.page = page;
   for (const link of ui.nav.querySelectorAll("[data-route]")) link.classList.toggle("active", link.dataset.route === page);
   const isChat = page === "chat";
+  ui.floating.hidden = isChat;
   ui.chatPage.hidden = !isChat; ui.pageSlot.hidden = isChat; document.querySelector(".chat-nav").hidden = !isChat;
   if (!isChat) {
     const [title, status, description] = workspacePages[page];
     ui.pageSlot.innerHTML = `<article><p class="panel-eyebrow">PROJECT SHION WORKSPACE</p><span class="page-status">${escapeHtml(status)}</span><h2>${escapeHtml(title)}</h2><p>${escapeHtml(description)}</p><p>このページは将来のroute / component boundaryのみです。未実装機能を利用可能にはしていません。</p></article>`;
-    if (page === "characters") {
-      const master = document.createElement("img"); master.className = "character-master"; master.dataset.characterAsset = "master"; master.alt = "Official Static 2D SHION master";
-      ui.pageSlot.querySelector("article").append(master); applyCharacterAssets(ui.pageSlot);
-    }
+    if (page === "home") await renderHomePage();
+    else if (page === "characters") await renderCharactersPage();
+    else if (page === "system") await renderSystemPage();
+    else if (page === "voice") renderVoiceLabPage();
+    else if (page === "room") renderRoomPage();
+    else if (page === "memory") renderMemoryPage();
+    else if (page === "settings") renderSettingsPage();
   }
   closeMobilePanels();
 }
@@ -729,7 +889,9 @@ ui.form.addEventListener("submit", send);
 ui.input.addEventListener("compositionstart", () => { composing = true; });
 ui.input.addEventListener("compositionend", () => { composing = false; });
 ui.input.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && !event.shiftKey && !event.isComposing && !composing) {
+  const mobile = matchMedia("(max-width: 760px)").matches || workspacePreferences.layout === "mobile";
+  const sendsOnEnter = workspacePreferences.enter_behavior === "desktop-send" && !mobile;
+  if (event.key === "Enter" && sendsOnEnter && !event.shiftKey && !event.isComposing && !composing) {
     event.preventDefault();
     ui.form.requestSubmit();
   }
@@ -739,8 +901,11 @@ ui.input.addEventListener("input", () => {
   ui.input.style.height = `${Math.min(ui.input.scrollHeight, 220)}px`;
   activeSession().draft = ui.input.value; activeSession().updated_at = new Date().toISOString(); persistSessions();
 });
-ui.messages.addEventListener("scroll", () => { ui.jump.hidden = nearLatest(); });
-ui.jump.addEventListener("click", () => { ui.messages.scrollTop = ui.messages.scrollHeight; ui.jump.hidden = true; });
+ui.messages.addEventListener("scroll", () => {
+  if (programmaticScroll) return;
+  autoFollow = nearLatest(); ui.jump.hidden = autoFollow;
+});
+ui.jump.addEventListener("click", () => { autoFollow = true; scrollToLatest(); });
 ui.reset.addEventListener("click", newChat);
 ui.sidebarReset.addEventListener("click", newChat);
 ui.sessionSearch.addEventListener("input", searchSessions);
@@ -769,9 +934,27 @@ ui.model.addEventListener("change", async () => {
 ui.mobileNav.addEventListener("click", () => { const open = !ui.sidebar.classList.contains("mobile-open"); closeMobilePanels(); ui.sidebar.classList.toggle("mobile-open", open); ui.mobileNav.setAttribute("aria-expanded", String(open)); ui.scrim.hidden = !open; });
 ui.mobileCharacter.addEventListener("click", () => { const open = !ui.characterPanel.classList.contains("mobile-open"); closeMobilePanels(); ui.characterPanel.classList.toggle("mobile-open", open); ui.mobileCharacter.setAttribute("aria-expanded", String(open)); ui.scrim.hidden = !open; });
 ui.characterClose.addEventListener("click", closeMobilePanels); ui.scrim.addEventListener("click", closeMobilePanels);
+ui.currentCharacter.addEventListener("click", () => { location.hash = "#/characters"; });
+ui.connectionRetry.addEventListener("click", () => poll(true));
+ui.connectionReload.addEventListener("click", () => location.reload());
 window.addEventListener("hashchange", renderRoute);
+ui.floatingToggle.addEventListener("click", () => { const open=ui.floatingCard.hidden; ui.floatingCard.hidden=!open; ui.floatingToggle.setAttribute("aria-expanded",String(open)); if(open)ui.floatingInput.focus(); });
+ui.floatingClose.addEventListener("click", () => { ui.floatingCard.hidden=true; ui.floatingToggle.setAttribute("aria-expanded","false"); });
+ui.floatingForm.addEventListener("submit", async event => {
+  event.preventDefault(); const message = ui.floatingInput.value.trim(); if (!message) return;
+  ui.floatingInput.value = ""; const owner = document.createElement("p"); owner.className = "owner"; owner.textContent = message; ui.floatingMessages.append(owner);
+  const thinking = document.createElement("p"); thinking.className = "thinking-label"; thinking.textContent = "SHION THINKING"; ui.floatingMessages.append(thinking); ui.floatingCard.dataset.state = "thinking";
+  const page = location.hash.replace(/^#\//, "") || "home";
+  const context = {page, selected_voice_model: page === "voice" ? "nene_v3_candidate" : undefined, selected_style: page === "voice" ? "Bright" : undefined, subsystem_status: ui.subsystem.textContent};
+  try {
+    const response = await fetch("/api/assistant", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({session_id:"workspace-assistant-shion", message, context})}); const data = await response.json();
+    thinking.className = ""; thinking.textContent = response.ok ? compactAssistantResponse(data.response) : (data.error || "Assistant unavailable");
+  } catch { thinking.className = ""; thinking.innerHTML = 'Connection failed. <button type="button">Retry from this page</button>'; thinking.querySelector("button").addEventListener("click", () => { ui.floatingInput.value = message; ui.floatingForm.requestSubmit(); }); }
+  finally { ui.floatingCard.dataset.state = "ready"; ui.floatingMessages.scrollTop = ui.floatingMessages.scrollHeight; }
+});
 
 async function initialize() {
+  applyLayoutPreference();
   renderRoute();
   try { await loadCharacterProfile("shion"); }
   catch (error) { document.querySelector(".asset-state").hidden = false; applyCharacterAssets(); console.warn("Official character asset fallback:", error.message); }

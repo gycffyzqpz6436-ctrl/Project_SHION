@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import traceback
@@ -19,6 +20,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.core.shion_runtime import ShionRuntime  # noqa: E402
+from app.core.gpu_resource_gate import (GpuResourceGate, ResourceGateCancelled,
+                                        ResourceGateFull, ResourceGateTimeout)  # noqa: E402
+from app.characters.registry import CharacterRegistry  # noqa: E402
 from app.models.registry import ModelRegistry  # noqa: E402
 from app.runtime.model_runtime import LocalModelRuntime  # noqa: E402
 from app.storage.conversation_db import ConversationRepository  # noqa: E402
@@ -28,6 +32,7 @@ from app.voice.service import VoiceServiceClient, VoiceUnavailable  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
 REGISTRY_PATH = Path(__file__).resolve().parent / "model_registry.json"
+CHARACTER_ROOT = STATIC / "assets" / "characters"
 MAX_BODY_BYTES = 128 * 1024
 LOG = logging.getLogger("shion_web")
 SAFE_DIAGNOSTIC_HEADERS = (
@@ -86,6 +91,9 @@ class ShionServer(ThreadingHTTPServer):
     controller: RuntimeController
     tailscale_hosts: frozenset[str]
     voice: VoiceServiceClient | None
+    gpu_gate: GpuResourceGate
+    characters: CharacterRegistry
+    storage_root: Path
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -202,6 +210,18 @@ class Handler(BaseHTTPRequestHandler):
             if not repository: self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "persistent history unavailable"}); return
             query = parse_qs(urlparse(self.path).query).get("q", [""])[0]
             self._json(HTTPStatus.OK, {"sessions": repository.list_sessions(query=query)})
+        elif path == "/api/characters":
+            self._json(HTTPStatus.OK, {"characters": self.server.characters.list()})
+        elif path.startswith("/api/characters/"):
+            try: self._json(HTTPStatus.OK, self.server.characters.get(path.removeprefix("/api/characters/")))
+            except KeyError: self._json(HTTPStatus.NOT_FOUND, {"error": "character not found"})
+        elif path == "/api/dashboard":
+            repository = self.server.controller.conversations
+            sessions = repository.list_sessions(limit=6) if repository else []
+            self._json(HTTPStatus.OK, {"character": self.server.characters.get("shion"), "recent_conversations": sessions,
+                "runtime": self.server.controller.status(), "voice": self.server.voice.status() if self.server.voice else {"state": "UNAVAILABLE"}})
+        elif path == "/api/system":
+            self._json(HTTPStatus.OK, self.server.system_snapshot())
         elif path.startswith("/api/sessions/"):
             repository = self.server.controller.conversations
             if not repository: self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "persistent history unavailable"}); return
@@ -239,8 +259,15 @@ class Handler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path
             if path == "/api/stop":
                 stopped = self.server.controller.cancel(session_id)
-                self._json(HTTPStatus.ACCEPTED, {"ok": True, "stop_requested": stopped})
+                cancelled = self.server.gpu_gate.cancel(session_id=session_id)
+                self._json(HTTPStatus.ACCEPTED, {"ok": True, "stop_requested": stopped, "voice_cancelled": cancelled})
                 return
+            if path == "/api/voice/queue/cancel":
+                message_id, version, request_id = payload.get("message_id"), payload.get("response_version"), payload.get("request_id")
+                if version is not None and (not isinstance(version, int) or version < 1): raise ValueError("invalid response version")
+                cancelled = self.server.gpu_gate.cancel(session_id=session_id, message_id=message_id,
+                    response_version=version, request_id=request_id)
+                self._json(HTTPStatus.OK, {"ok": True, "cancelled": cancelled}); return
             if path == "/api/reset":
                 self.server.controller.reset(session_id)
                 self._json(HTTPStatus.OK, {"ok": True})
@@ -293,10 +320,29 @@ class Handler(BaseHTTPRequestHandler):
                 if developer_model is not None and (not isinstance(developer_model, str) or not developer_model.isascii()): raise ValueError("invalid developer model")
                 if developer_style is not None and (not isinstance(developer_style, str) or len(developer_style) > 64): raise ValueError("invalid developer style")
                 try:
-                    result = self.server.voice.generate(message_id, version, preset, developer_model, developer_style, bool(payload.get("retry")))
+                    result = self.server.voice.generate(message_id, version, preset, developer_model, developer_style,
+                        bool(payload.get("retry")), session_id)
                 except ValueError as error:
                     self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)}); return
                 self._json(HTTPStatus.CREATED, result); return
+            if path == "/api/voice/lab/generate":
+                if not self.server.voice: raise VoiceUnavailable("Voice unavailable")
+                text = payload.get("tts_text")
+                if not isinstance(text, str): raise ValueError("tts_text required")
+                parameters = payload.get("parameters", {})
+                if not isinstance(parameters, dict): raise ValueError("invalid parameters")
+                self._json(HTTPStatus.CREATED, self.server.voice.generate_lab(text, parameters, session_id)); return
+            if path == "/api/assistant":
+                message, context = payload.get("message"), payload.get("context", {})
+                if not isinstance(message, str) or not message.strip() or len(message) > 4000 or not isinstance(context, dict): raise ValueError("invalid assistant request")
+                allowed_context = {key: str(value)[:120] for key, value in context.items() if key in {"page", "selected_voice_model", "selected_style", "subsystem_status"} and isinstance(value, (str, int, float, bool))}
+                assistant_session = "workspace-assistant-shion"
+                if self.server.controller.conversations:
+                    try: self.server.controller.conversations.load_session(assistant_session)
+                    except KeyError: self.server.controller.create_persistent_session(assistant_session, "minimal")
+                structured = f"[Workspace context: {json.dumps(allowed_context, ensure_ascii=False)}]\n{message.strip()}"
+                result = self.server.controller.chat(assistant_session, "minimal", structured)
+                self._json(HTTPStatus.OK, result); return
             if path == "/api/regenerate":
                 mode = payload.get("mode")
                 if mode not in {"minimal", "neutral", "canonical"}:
@@ -332,6 +378,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.OK, result)
         except OverflowError as error:
             self._json(HTTPStatus.CONFLICT, {"error": str(error)})
+        except ResourceGateFull as error:
+            self._json(HTTPStatus.TOO_MANY_REQUESTS, {"error": str(error), "state": "WAITING_FOR_GPU"})
+        except ResourceGateTimeout as error:
+            self._json(HTTPStatus.GATEWAY_TIMEOUT, {"error": str(error), "state": "WAITING_FOR_GPU"})
+        except ResourceGateCancelled as error:
+            self._json(HTTPStatus.CONFLICT, {"error": str(error), "state": "CANCELLED"})
         except VoiceUnavailable as error:
             self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": f"Voice unavailable: {error}"})
         except RuntimeError:
@@ -359,9 +411,35 @@ def create_server(host: str, port: int, controller: RuntimeController, common_pa
         raise ValueError("only 127.0.0.1 is permitted")
     server = ShionServer((host, port), Handler)
     server.controller = controller
+    server.gpu_gate = GpuResourceGate(lambda: str(controller.state) == "Ready")
+    controller.gpu_gate = server.gpu_gate
     server.common_path = common_path
     server.tailscale_hosts = frozenset(discover_tailscale_hosts() if tailscale_hosts is None else tailscale_hosts)
     server.voice = voice
+    if voice:
+        voice.gpu_gate = server.gpu_gate
+    server.characters = CharacterRegistry(CHARACTER_ROOT)
+    server.storage_root = Path(os.environ.get("SHION_DATA_ROOT", r"D:\AI\Project_SHION"))
+    def system_snapshot() -> dict:
+        memory = {"state": "UNAVAILABLE"}
+        try:
+            import psutil
+            vm = psutil.virtual_memory(); memory = {"state": "AVAILABLE", "total_mib": round(vm.total / 2**20), "available_mib": round(vm.available / 2**20), "percent": vm.percent}
+        except Exception: pass
+        gpu = {"state": "UNAVAILABLE"}
+        try:
+            query = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total,memory.used,memory.free", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=3, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            name, total, used, free = [item.strip() for item in query.stdout.splitlines()[0].split(",")]
+            gpu = {"state": "AVAILABLE", "name": name, "total_mib": int(total), "used_mib": int(used), "free_mib": int(free)}
+        except Exception: pass
+        disk = shutil.disk_usage(server.storage_root.anchor or server.storage_root)
+        repository = controller.conversations
+        return {"server": {"state": str(controller.state), "bind": "loopback-only"}, "conversation": controller.status().get("history", {}),
+                "voice": voice.status() if voice else {"state": "UNAVAILABLE"}, "image": {"state": "NOT_INTEGRATED"}, "memory": {"state": "DISABLED"},
+                "model": {"alias": controller.current_alias}, "sqlite": repository.integrity_status() if repository else {"state": "UNAVAILABLE"},
+                "ram": memory, "gpu": gpu, "storage": {"free_gib": round(disk.free / 2**30, 1), "total_gib": round(disk.total / 2**30, 1)},
+                "processes": {"shion_server": "RUNNING", "voice_service": voice.status().get("state") if voice else "UNAVAILABLE"}}
+    server.system_snapshot = system_snapshot
     return server
 
 

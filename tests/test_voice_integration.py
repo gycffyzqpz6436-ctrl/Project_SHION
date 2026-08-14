@@ -1,10 +1,13 @@
 import tempfile
 import unittest
 import wave
+import threading
+import time
 from pathlib import Path
 
 from app.storage.conversation_db import ConversationRepository
 from app.voice.service import VoiceServiceClient, VoiceUnavailable
+from app.core.gpu_resource_gate import GpuResourceGate
 
 
 class FakeVoiceClient(VoiceServiceClient):
@@ -76,6 +79,43 @@ class VoiceIntegrationTests(unittest.TestCase):
         self.client._request = lambda *args, **kwargs: (_ for _ in ()).throw(VoiceUnavailable("OOM"))
         with self.assertRaises(VoiceUnavailable): self.client.generate("assistant-0001", 1, None, "F1")
         self.assertEqual(self.repository.load_session("session-0001")["messages"][0]["message_id"], "assistant-0001")
+
+    def test_voice_lab_is_ephemeral_and_keeps_approved_preset(self):
+        self.client.approved = True
+        before = self.repository.list_voice_artifacts("assistant-0001", 1)
+        result = self.client.generate_lab("**Nene** https://example.com", {
+            "style_weight": 1.2, "length": 0.9, "pitch_scale": 1.05, "intonation_scale": 1.1,
+        })
+        path, record = self.client.artifact(result["artifact_id"])
+        self.assertTrue(path.is_file())
+        self.assertEqual(record["voice_model_id"], "nene_v3_candidate")
+        self.assertEqual(record["voice_style"], "Bright")
+        self.assertEqual(record["voice_preset_id"], "SHION Default")
+        self.assertEqual(record["parameters"]["pitch_scale"], 1.05)
+        self.assertEqual(record["text_preview"], "Nene URL")
+        self.assertGreater(record["file_size_bytes"], 44)
+        self.assertEqual(self.repository.list_voice_artifacts("assistant-0001", 1), before)
+
+    def test_voice_lab_rejects_parameters_outside_owner_allowlist(self):
+        self.client.approved = True
+        with self.assertRaisesRegex(ValueError, "pitch_scale is outside the allowlist"):
+            self.client.generate_lab("test", {"pitch_scale": 1.21})
+
+    def test_read_aloud_and_voice_lab_use_shared_gpu_gate(self):
+        self.client.approved = True
+        gate = GpuResourceGate(lambda: True, settle_seconds=0, timeout_seconds=1)
+        self.client.gpu_gate = gate; gate.begin_llm(); results = []
+        read = threading.Thread(target=lambda: results.append(self.client.generate(
+            "assistant-0001", 1, "SHION Default", session_id="session-0001")))
+        lab = threading.Thread(target=lambda: results.append(self.client.generate_lab(
+            "test", {}, request_id="voice-lab-0001")))
+        read.start(); lab.start()
+        deadline = time.monotonic() + 1
+        while gate.status()["waiting"] < 2 and time.monotonic() < deadline: time.sleep(.005)
+        self.assertEqual(gate.status()["state"], "WAITING_FOR_GPU")
+        self.assertEqual(results, [])
+        gate.end_llm(); read.join(2); lab.join(2)
+        self.assertEqual(len(results), 2)
 
 
 if __name__ == "__main__": unittest.main()

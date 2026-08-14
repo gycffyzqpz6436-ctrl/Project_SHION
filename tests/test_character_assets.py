@@ -3,6 +3,7 @@ import json
 import struct
 import unittest
 from pathlib import Path
+from app.characters.registry import CharacterRegistry
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,9 @@ class CharacterAssetTests(unittest.TestCase):
         self.assertEqual(self.profile["default_voice"]["style"], "Bright")
         self.assertTrue(self.manifest["owner_approved"])
         self.assertEqual(self.manifest["status"], "official")
+        resolved = CharacterRegistry(CHARACTER_ROOT.parent).get("shion")
+        self.assertEqual(resolved["assets"]["avatar"], "/assets/characters/shion/official/static_2d/shion_avatar.png")
+        self.assertEqual(resolved["canonical_reference"], "/docs/character/character_bible.md")
 
     def test_manifest_png_dimensions_alpha_and_hashes(self):
         self.assertEqual(set(self.manifest["assets"]), {"avatar", "panel", "master"})

@@ -202,6 +202,99 @@ Five sequential Japanese generations ran in one persistent Neutral session on Ge
 
 RTX 5070 total VRAM was 12,227 MiB. Post-generation Working Set changed by only 0.6 MiB and Private Bytes by 0.4 MiB across the corrected five-run sample; VRAM returned near its generation baseline. No monotonic physical-RAM or VRAM leak was detected. Windows exposed system commit but no supported per-process Memory Compression counter in this environment, so compression-specific attribution is inconclusive rather than inferred from Task Manager percentage.
 
+## Workspace Phase D-E review boundary
+
+Phase D introduces a read-only `CharacterRegistry` whose canonical SHION record is
+the repository profile and Owner-approved asset manifest. Conversation schema v3
+adds a stable `character_id`; existing sessions migrate additively to `shion` and
+generation never rewrites that binding. Multi-character behavior, relationship
+state and renderer upgrades remain unavailable.
+
+Phase E adds Home, Characters, Voice Lab, System and SHION Room presentation
+surfaces without creating the deferred backends. Dashboard data is assembled from
+existing conversation, runtime, Character and Voice adapters. System telemetry is
+minimal, manually refreshed and excludes credentials and private filesystem paths.
+Voice Lab uses only the approved `SHION Default` Nene V3/Bright preset, bounded
+temporary parameters and opaque audio artifact IDs; experiments do not mutate the
+saved preset or conversation records.
+
+The in-Web-UI Floating Assistant is a compact view over the same Conversation
+backend. It accepts only an explicit bounded Workspace-context allowlist. It is not
+the future Windows Desktop Companion: no window-title, screen, selection-text or
+other application access exists, and each such capability remains a separate
+default-OFF Owner permission extension point.
+
+## Phase D-E Owner UX revision
+
+The daily-use Chat surface owns a persistent `autoFollow` presentation state.
+Sending, regenerating or explicitly choosing Jump to Latest enables bottom lock;
+an Owner scroll away from the latest content disables it. Typewriter updates and
+late Voice controls follow only while this state remains enabled. Mobile Enter is
+a newline and the Send button submits; desktop keeps IME-safe Enter submission.
+
+Home is the assistant landing surface and contains no resource telemetry. System
+owns manually refreshed DB, process, RAM, GPU and storage status. The right panel
+is a renderer-neutral Character Presence surface rather than another System page.
+Chat backgrounds are a CSS/asset boundary with contrast-preserving defaults; no
+decorative background pack is bundled in this revision.
+
+Memory is an explicitly disabled Owner Memory schema/UI foundation, separate from
+the Character Bible and Conversation History. Settings stores only working
+presentation preferences in browser-session storage. It cannot enable Memory,
+change the approved Character or claim unavailable backends.
+
+Voice Lab exposes only adapter-verified allowlisted parameters as bounded sliders.
+Display text and TTS transformation remain separate. Direct accent/phoneme control
+is labelled unsupported until the isolated Style-Bert-VITS2 adapter proves a safe
+contract; pronunciation dictionary persistence remains an Owner Gate.
+
+### Phase D-E GPU Resource Safety Owner Review
+
+`GpuResourceGate` is the shared GPU ownership boundary for Conversation and every
+Voice entry point: Read Aloud, Retry Voice, Auto Play and Voice Lab. LLM generation
+acquires ownership before entering `Generating` and releases it from `finally`, so
+failure and Owner cancellation cannot strand the gate. Voice requests submitted
+while LLM generation owns the GPU remain in a bounded FIFO queue with deduplication
+by message ID, response version and preset/model selection. The queue has an
+explicit limit and timeout. Session changes, response-version changes and Owner
+cancel remove matching waiting requests. The UI presents `WAITING_FOR_GPU` with
+"会話生成完了後に音声を生成します" rather than claiming that synthesis started.
+
+After LLM release the gate requires runtime `Ready`, waits a short settle interval,
+then permits one Voice request. The existing Voice exclusive lock remains in place.
+VRAM free is exposed only as telemetry; it is not an admission predicate. Gemma and
+Voice resident/unload policies are unchanged.
+
+RTX 5070 (12,227 MiB) review measurements observed Gemma Heretic generation at
+11,880 MiB used / 64 MiB free. A later Voice E2E observed 11,240 / 704 MiB before,
+11,804 / 140 MiB at sampled peak, and 11,658 / 286 MiB at the stable 30-second
+post-generation point. The Voice artifact used SHION Default, Nene V3 and Bright;
+latency was 10.896 seconds for 2.566 seconds of audio. However, final runtime
+inspection for that Voice E2E reported `ministral3_official`. Therefore this is not
+recorded as a strict "Heretic idle + Voice" measurement. That measurement remains
+separate from the later Owner-verified Heretic validation below.
+
+The subsequent Owner-verified contention run used runtime alias
+`gemma4_12b_heretic_ja_v2_manual`. Voice was submitted only after Heretic entered
+`Generating`. Observed ordering was: Voice `WAITING_FOR_GPU` with queue depth one,
+LLM HTTP completion, runtime `Ready`, gate `GENERATING` after the settle boundary,
+Voice listener availability, Voice completion, then gate `READY` with an empty
+queue. The LLM took 37.172 seconds. First-load Voice used SHION Default / Nene V3 /
+Bright and completed successfully without overlap or OOM.
+
+Strict warm Heretic idle + Voice measurements on RTX 5070 12,227 MiB:
+
+| Point | Used VRAM | Free VRAM |
+|---|---:|---:|
+| Heretic + resident Voice idle baseline | 10,416-10,418 MiB | 1,526-1,528 MiB |
+| Voice generation sampled peak | 10,458 MiB | 1,486 MiB |
+| 30-second post-settle | 10,420-10,421 MiB | 1,523-1,524 MiB |
+
+The warm Voice request completed in 0.703 seconds wall / 0.661 seconds inference
+for 3.019 seconds of audio. Post-validation gate state was `READY`, queue depth was
+zero and `llm_active` was false. The earlier first-load contention run peaked at
+10,402 MiB and settled at 10,397-10,402 MiB before the separated warm sample.
+
 ## Phase 2 Voice integration
 
 SHION Chat never imports Style-Bert-VITS2. `VoiceServiceClient` is an application-side Controller/Backend Adapter that starts and communicates with the isolated loopback Voice service in its dedicated D: venv. The conversation model receives no Voice capability and no filesystem path. Text generation completes and persists before optional TTS begins; a Voice exception only marks Voice `ERROR` and never removes or regenerates the response.

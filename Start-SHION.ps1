@@ -17,7 +17,9 @@ if (-not (Test-Path -LiteralPath $serverScript -PathType Leaf)) { throw "SHION s
 if (-not [IO.Path]::IsPathRooted($DataRoot)) { throw 'SHION_DATA_ROOT must be an absolute path.' }
 
 function Get-ShionStatus {
-    try { return Invoke-RestMethod -Uri $statusUrl -TimeoutSec 2 }
+    # /api/status may spend up to two seconds probing the lazy Voice adapter.
+    # Keep the launcher timeout above that boundary to avoid a false startup timeout.
+    try { return Invoke-RestMethod -Uri $statusUrl -TimeoutSec 5 }
     catch { return $null }
 }
 

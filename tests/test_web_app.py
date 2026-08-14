@@ -70,6 +70,17 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(body[:8], b"\x89PNG\r\n\x1a\n")
         status, _, _ = self.request("GET", "/assets/characters/../../model_registry.json")
         self.assertEqual(status, 404)
+        status, _, body = self.request("GET", "/api/characters/shion")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["default_voice"]["style"], "Bright")
+        status, _, body = self.request("GET", "/api/dashboard")
+        self.assertEqual(status, 200)
+        dashboard = json.loads(body)
+        self.assertEqual(dashboard["character"]["character_id"], "shion")
+        self.assertNotIn("system", dashboard)
+        status, _, body = self.request("GET", "/api/system")
+        self.assertEqual(status, 200)
+        self.assertNotIn("D:\\", body.decode())
 
     def test_chat_reset_and_schema(self):
         session = "session-1234"
@@ -111,6 +122,11 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["response"], "reply: hello")
         self.assertIn((session, "neutral"), self.controller.histories)
+
+    def test_floating_assistant_accepts_only_bounded_workspace_context(self):
+        status, _, body = self.request("POST", "/api/assistant", {"session_id": "workspace-assistant-shion", "message": "help", "context": {"page": "voice", "credential": "secret", "filesystem": "D:/private"}})
+        self.assertEqual(status, 200)
+        self.assertNotIn("secret", body.decode())
 
     def test_stop_generation_endpoint_requests_safe_cancel(self):
         session = "session-stop"
@@ -240,7 +256,7 @@ class WebAppTests(unittest.TestCase):
         self.assertNotIn('id="voice-developer" type="checkbox" checked', combined)
         self.assertIn("Voice presetを選択してください。", combined)
         self.assertIn('selection === "model:F1"', combined)
-        self.assertIn('ui.voiceStatus.textContent = "Voice GENERATING"', combined)
+        self.assertIn('ui.voiceStatus.textContent = "Voice WAITING_FOR_GPU"', combined)
         self.assertNotIn('new Option("SHION Default"', combined)
         self.assertIn("activeSessionId", combined)
         self.assertIn("session-list", combined)
@@ -256,11 +272,29 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("loadCharacterProfile", combined)
         self.assertIn("resolveCharacterAsset", combined)
         self.assertIn('data-character-asset="panel"', combined)
+        self.assertIn("renderHomePage", combined)
+        self.assertIn("renderVoiceLabPage", combined)
+        self.assertIn("Retry current settings", combined)
+        self.assertIn("GPU VRAM", combined)
+        self.assertIn("floating-assistant", combined)
+        self.assertIn("Dictionary persistence: Owner Gate", combined)
+        self.assertIn("session-menu-popover", combined)
+        self.assertIn("autoFollow", combined)
+        self.assertIn('enter_behavior: "desktop-send"', combined)
+        self.assertIn("renderMemoryPage", combined)
+        self.assertIn("renderSettingsPage", combined)
+        self.assertIn("SHION THINKING", combined)
+        self.assertIn("layout-force-mobile", combined)
+        self.assertIn("WAITING_FOR_GPU", combined)
+        self.assertIn("/api/voice/queue/cancel", combined)
+        self.assertIn("if (ui.voiceAutoplay.checked) generateVoice", combined)
 
     def test_workspace_defaults_and_deterministic_title(self):
         self.assertEqual(build_parser().parse_args([]).model, "gemma4_12b_heretic_ja_v2_manual")
-        self.assertEqual(conversation_title("  Nene音声調整について相談したい。続きです  "), "Nene音声調整について相談したい")
-        self.assertEqual(conversation_title("香港出張準備を進めたいので予定を整理してほしい"), "香港出張準備を進めたいので予定を整理してほしい")
+        self.assertEqual(conversation_title("Nene音声調整について相談したい。"), "Neneの音声調整")
+        self.assertEqual(conversation_title("今日ちょっと聞きたいんだけど紫苑ちゃんの声を調整したい。"), "紫苑の音声調整")
+        self.assertEqual(conversation_title("香港出張の準備と予定を整理したい。"), "香港出張の準備")
+        self.assertEqual(conversation_title("SHION UI改修を進めたい。"), "SHION UI改修")
 
 
 if __name__ == "__main__":

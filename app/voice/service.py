@@ -11,6 +11,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.core.gpu_resource_gate import GpuResourceGate
+
 
 class VoiceUnavailable(RuntimeError):
     pass
@@ -19,13 +21,16 @@ class VoiceUnavailable(RuntimeError):
 class VoiceServiceClient:
     """HTTP adapter for the separately isolated Style-Bert-VITS2 service."""
 
-    def __init__(self, root: Path, repository_root: Path, conversations, base_url: str = "http://127.0.0.1:8766") -> None:
+    def __init__(self, root: Path, repository_root: Path, conversations, base_url: str = "http://127.0.0.1:8766",
+                 gpu_gate: GpuResourceGate | None = None) -> None:
         self.root, self.repository_root = root.resolve(), repository_root.resolve()
         self.artifact_root = (self.root / "artifacts" / "voice").resolve()
         self.conversations, self.base_url = conversations, base_url.rstrip("/")
         self._process: subprocess.Popen | None = None
         self._lock = threading.Lock()
         self._state, self._error = "AVAILABLE", None
+        self._lab_artifacts: dict[str, tuple[Path, dict]] = {}
+        self.gpu_gate = gpu_gate
 
     def _request(self, path: str, payload: dict | None = None, timeout: int = 10) -> dict:
         data = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -73,7 +78,18 @@ class VoiceServiceClient:
 
     def generate(self, message_id: str, response_version: int, preset_id: str | None,
                  developer_model: str | None = None, developer_style: str | None = None,
-                 retry: bool = False) -> dict:
+                 retry: bool = False, session_id: str | None = None) -> dict:
+        if self.gpu_gate:
+            selection = preset_id or f"developer:{developer_model}:{developer_style or ''}"
+            key = ("message", message_id, response_version, selection)
+            identity = {"session_id": session_id, "message_id": message_id, "response_version": response_version}
+            return self.gpu_gate.submit_voice(key, identity, lambda: self._generate(
+                message_id, response_version, preset_id, developer_model, developer_style, retry))
+        return self._generate(message_id, response_version, preset_id, developer_model, developer_style, retry)
+
+    def _generate(self, message_id: str, response_version: int, preset_id: str | None,
+                  developer_model: str | None = None, developer_style: str | None = None,
+                  retry: bool = False) -> dict:
         if not self.conversations: raise VoiceUnavailable("Persistent history is required for Read Aloud")
         source = self.conversations.get_assistant_version(message_id, response_version)
         with self._lock:
@@ -137,15 +153,61 @@ class VoiceServiceClient:
         return None
 
     def artifact(self, artifact_id: str) -> tuple[Path, dict]:
+        if artifact_id in self._lab_artifacts:
+            target, record = self._lab_artifacts[artifact_id]
+            if target.is_file() and self.artifact_root in target.parents:
+                return target, record
+            raise FileNotFoundError(artifact_id)
         record = self.conversations.get_voice_artifact(artifact_id)
         target = (self.artifact_root / record["relative_path"]).resolve()
         if self.artifact_root not in target.parents or not target.is_file() or target.suffix.lower() != ".wav":
             raise FileNotFoundError(artifact_id)
         return target, record
 
+    def generate_lab(self, text: str, parameters: dict, request_id: str | None = None) -> dict:
+        """Generate an ephemeral Voice Lab artifact without changing SHION Default."""
+        if self.gpu_gate:
+            identity = {"session_id": request_id, "request_id": request_id}
+            return self.gpu_gate.submit_voice(("lab", request_id), identity,
+                lambda: self._generate_lab(text, parameters))
+        return self._generate_lab(text, parameters)
+
+    def _generate_lab(self, text: str, parameters: dict) -> dict:
+        normalized = self.normalize(text)
+        if not normalized:
+            raise ValueError("TTS text is required")
+        allowed = {"style_weight": (0.0, 2.0), "length": (0.7, 1.5), "pitch_scale": (0.8, 1.2), "intonation_scale": (0.5, 1.5)}
+        settings = {}
+        for name, (minimum, maximum) in allowed.items():
+            value = float(parameters.get(name, 1.0))
+            if not minimum <= value <= maximum:
+                raise ValueError(f"{name} is outside the allowlist")
+            settings[name] = value
+        with self._lock:
+            self._start(); meta = self._request("/api/meta", timeout=5)
+            approved = {item["preset_name"]: item for item in meta.get("presets", []) if item.get("owner_approved") is True}
+            preset = approved.get("SHION Default")
+            if not preset: raise VoiceUnavailable("SHION Default is unavailable")
+            payload = {**preset, **settings, "text": normalized}
+            self._state = "GENERATING"
+            generated = self._request("/api/generate", payload, timeout=180)
+            target = Path(generated["path"]).resolve()
+            if self.artifact_root not in target.parents: raise VoiceUnavailable("unsafe Voice artifact")
+            artifact_id = str(uuid.uuid4())
+            record = {"artifact_id": artifact_id, "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                      "voice_model_id": generated["settings"]["voice_model"], "voice_style": generated["settings"]["style"],
+                      "voice_preset_id": "SHION Default", "duration": generated["metrics"]["wav_duration_seconds"],
+                      "latency_seconds": generated["metrics"]["latency_seconds"], "parameters": settings,
+                      "text_preview": normalized[:80], "file_size_bytes": target.stat().st_size}
+            self._lab_artifacts[artifact_id] = (target, record)
+            self._state = "READY"
+            return {**record, "audio_url": f"/api/voice/artifacts/{artifact_id}"}
+
     def status(self) -> dict:
         meta = self.metadata(False)
-        return {**meta, "state": self._state, "error": self._error}
+        gate = self.gpu_gate.status() if self.gpu_gate else None
+        state = gate["state"] if gate and gate["state"] in {"WAITING_FOR_GPU", "GENERATING"} else self._state
+        return {**meta, "state": state, "error": self._error, "resource_gate": gate}
 
     def close(self) -> None:
         if self._process and self._process.poll() is None:

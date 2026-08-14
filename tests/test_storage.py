@@ -46,6 +46,7 @@ class ConversationRepositoryTests(unittest.TestCase):
             repository.set_feedback("m1", "good", "2026-01-02T00:00:03Z")
             self.assertEqual(repository.search("Renamed")[0]["session_id"], "s1")
             loaded = repository.load_session("s1")
+            self.assertEqual(loaded["character_id"], "shion")
             self.assertEqual(loaded["messages"][0]["parts"][0]["text"], "hello")
             with closing(repository.connect()) as connection:
                 self.assertEqual(connection.execute("SELECT version FROM schema_meta").fetchone()[0], SCHEMA_VERSION)
@@ -81,6 +82,16 @@ class ConversationRepositoryTests(unittest.TestCase):
                 repository.migrate()
             with closing(sqlite3.connect(path)) as check:
                 self.assertEqual(check.execute("SELECT version FROM schema_meta").fetchone()[0], 999)
+
+    def test_schema_v2_additively_binds_existing_sessions_to_shion(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "chat.db"
+            connection = sqlite3.connect(path)
+            connection.executescript("CREATE TABLE schema_meta(version INTEGER NOT NULL); INSERT INTO schema_meta VALUES(2); CREATE TABLE sessions(session_id TEXT PRIMARY KEY,title TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,model_id TEXT,model_revision TEXT,conversation_mode TEXT NOT NULL,archived INTEGER NOT NULL DEFAULT 0);")
+            connection.execute("INSERT INTO sessions VALUES(?,?,?,?,?,?,?,?)", ("legacy", "Legacy", "x", "x", None, None, "minimal", 0))
+            connection.commit(); connection.close()
+            repository = ConversationRepository(path, enabled=True); repository.migrate()
+            self.assertEqual(repository.load_session("legacy")["character_id"], "shion")
 
     def test_transaction_rolls_back(self):
         with tempfile.TemporaryDirectory() as temporary:

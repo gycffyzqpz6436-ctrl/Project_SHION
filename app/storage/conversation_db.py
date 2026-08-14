@@ -8,13 +8,14 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta(version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS sessions(
  session_id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at TEXT NOT NULL,
  updated_at TEXT NOT NULL, model_id TEXT, model_revision TEXT,
- conversation_mode TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1))
+ conversation_mode TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)),
+ character_id TEXT NOT NULL DEFAULT 'shion'
 );
 CREATE TABLE IF NOT EXISTS messages(
  message_id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
@@ -72,14 +73,17 @@ class ConversationRepository:
             exists = connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_meta'").fetchone()
             if exists:
                 row = connection.execute("SELECT version FROM schema_meta LIMIT 1").fetchone()
-                if row and row["version"] not in {1, SCHEMA_VERSION}:
+                if row and row["version"] not in {1, 2, SCHEMA_VERSION}:
                     raise RuntimeError(f"unsupported conversation schema version: {row['version']}")
         with self.transaction() as connection:
             connection.executescript(SCHEMA)
             row = connection.execute("SELECT version FROM schema_meta LIMIT 1").fetchone()
             if row is None:
                 connection.execute("INSERT INTO schema_meta(version) VALUES (?)", (SCHEMA_VERSION,))
-            elif row["version"] == 1:
+            elif row["version"] in {1, 2}:
+                columns = {item["name"] for item in connection.execute("PRAGMA table_info(sessions)")}
+                if "character_id" not in columns:
+                    connection.execute("ALTER TABLE sessions ADD COLUMN character_id TEXT NOT NULL DEFAULT 'shion'")
                 connection.execute("UPDATE schema_meta SET version=?", (SCHEMA_VERSION,))
 
     @contextmanager
@@ -98,9 +102,9 @@ class ConversationRepository:
     def create_session(self, session: dict) -> None:
         with self.transaction() as connection:
             connection.execute(
-                "INSERT INTO sessions(session_id,title,created_at,updated_at,model_id,model_revision,conversation_mode) VALUES(?,?,?,?,?,?,?)",
+                "INSERT INTO sessions(session_id,title,created_at,updated_at,model_id,model_revision,conversation_mode,character_id) VALUES(?,?,?,?,?,?,?,?)",
                 (session["session_id"], session["title"], session["created_at"], session["updated_at"],
-                 session.get("model_id"), session.get("model_revision"), session["conversation_mode"]),
+                 session.get("model_id"), session.get("model_revision"), session["conversation_mode"], session.get("character_id", "shion")),
             )
 
     def list_sessions(self, query: str = "", include_archived: bool = False, limit: int = 100) -> list[dict]:
@@ -274,6 +278,13 @@ class ConversationRepository:
         with closing(self.connect()) as connection:
             return [dict(row) for row in connection.execute("SELECT artifact_id,voice_model_id,voice_revision,voice_preset_id,created_at,duration,attempt FROM voice_artifacts WHERE message_id=? AND response_version=? ORDER BY attempt",
                                                           (message_id, version))]
+
+    def integrity_status(self) -> dict:
+        with closing(self.connect()) as connection:
+            result = connection.execute("PRAGMA quick_check").fetchone()[0]
+            counts = {table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                      for table in ("sessions", "messages", "voice_artifacts")}
+            return {"state": "OK" if result == "ok" else "ERROR", "schema_version": SCHEMA_VERSION, "counts": counts}
 
     @staticmethod
     def encode_part(part: dict) -> str:

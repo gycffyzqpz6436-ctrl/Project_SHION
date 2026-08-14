@@ -11,8 +11,9 @@
   <div class="workspace" data-page="chat">
     <div id="mobile-scrim" class="mobile-scrim" hidden></div>
     <aside id="sidebar" class="sidebar" aria-label="Project SHION navigation">
-      <div class="workspace-brand"><span class="shion-avatar shion-avatar--small"><img data-character-asset="avatar" alt="SHION"></span><div><strong>Project SHION</strong><small>Assistant Workspace</small></div></div>
+      <div class="workspace-brand"><span class="project-mark-placeholder" aria-hidden="true">PS</span><div><strong>Project SHION</strong><small>Assistant Workspace · logo pending</small></div></div>
       <nav id="workspace-nav" class="workspace-nav" aria-label="Workspace pages">
+        <a href="#/home" data-route="home"><span>⌂</span> Home</a>
         <a href="#/chat" data-route="chat" class="active"><span>◈</span> Chat</a>
         <a href="#/room" data-route="room"><span>◇</span> SHION Room <small>Coming Soon</small></a>
         <a href="#/voice" data-route="voice"><span>♫</span> Voice Lab <small>Foundation</small></a>
@@ -32,7 +33,7 @@
       <header class="topbar">
         <button id="mobile-nav-toggle" class="mobile-only icon-button" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">☰</button>
         <div class="brand">
-          <span class="header-avatar shion-avatar" aria-hidden="true"><img data-character-asset="avatar" alt=""><span>S</span></span>
+          <button id="current-character" class="header-avatar shion-avatar" type="button" aria-label="Current character: SHION. Open Characters"><img data-character-asset="avatar" alt=""><span>S</span></button>
           <div><h1>SHION <span>紫苑</span></h1><p>Personal AI Companion</p></div>
         </div>
         <div class="controls">
@@ -56,6 +57,7 @@
         <span id="status-dot"></span><span id="status">Starting</span>
         <span id="connection-status">Connecting</span>
         <span id="model-summary">Localhost only</span><span id="model-badge" class="badge" hidden>Experimental</span>
+        <span id="connection-actions" class="connection-actions" hidden><button id="connection-retry" type="button">Retry</button><button id="connection-reload" type="button">Reload</button></span>
       </section>
       <details id="model-panel" class="model-panel">
         <summary>Model Info</summary>
@@ -73,7 +75,7 @@
           <button type="button" disabled title="Voice input is not enabled">🎙</button>
         </div>
         <label class="sr-only" for="message">メッセージ</label>
-        <textarea id="message" rows="1" maxlength="20000" placeholder="SHIONにメッセージを送る…" disabled></textarea>
+        <textarea id="message" rows="1" maxlength="20000" placeholder="SHIONにメッセージ" disabled></textarea>
         <button id="send" type="submit" disabled>Send</button>
         <p class="hint">Enterで送信 · Shift+Enterで改行</p>
       </form>
@@ -81,25 +83,35 @@
     </main>
     <aside id="shion-panel" class="shion-panel" aria-label="SHION Monitor Panel">
       <button id="character-close" class="mobile-only panel-close" type="button" aria-label="Close SHION panel">×</button>
-      <p class="panel-eyebrow">SHION MONITOR</p>
+      <p class="panel-eyebrow">CHARACTER PRESENCE</p>
       <div id="character-renderer" class="character-renderer" data-renderer="static-2d">
         <div class="character-stage"><img data-character-asset="panel" alt="Official Static 2D SHION"><span id="presence-orbit"></span></div>
         <p class="asset-state" hidden>Official 2D asset unavailable</p>
       </div>
-      <div class="character-name"><h2>SHION</h2><p>紫苑</p></div>
-      <dl class="monitor-list">
-        <div><dt>Conversation</dt><dd id="monitor-conversation">Starting</dd></div>
-        <div><dt>Voice</dt><dd id="monitor-voice">Unavailable</dd></div>
-        <div><dt>Model</dt><dd id="monitor-model">Loading</dd></div>
-        <div><dt>Voice preset</dt><dd id="monitor-preset">SHION Default</dd></div>
-        <div><dt>Renderer</dt><dd>Static 2D boundary</dd></div>
+      <div class="character-name"><h2>SHION</h2><p>紫苑 · Official Static 2D</p></div>
+      <div class="presence-state"><span></span><strong id="monitor-conversation">Starting</strong></div>
+      <p id="monitor-message" class="monitor-message">ここにいるよ。話したくなったら、いつでも呼んで。</p>
+      <dl class="monitor-list compact">
+        <div><dt>Voice</dt><dd id="monitor-preset">SHION Default</dd></div>
+        <div><dt>Mode</dt><dd id="monitor-model">Normal</dd></div>
+        <div class="sr-only"><dt>Voice state</dt><dd id="monitor-voice">Unavailable</dd></div>
       </dl>
+      <nav class="monitor-actions" aria-label="SHION quick access"><a href="#/room">Room</a><a href="#/voice">Voice</a><a href="#/characters">Character</a></nav>
       <p class="renderer-roadmap">Static 2D <span>→</span> Live2D <span>→</span> 3D</p>
     </aside>
   </div>
   <dialog id="archive-dialog" class="confirm-dialog">
     <form method="dialog"><p class="panel-eyebrow">ARCHIVE CONVERSATION</p><h2 id="archive-title"></h2><p>This removes the conversation from active History and Search. It is a reversible soft delete; messages and Voice artifacts are not hard-deleted.</p><div><button value="cancel" class="secondary">Cancel</button><button id="archive-confirm" value="confirm" class="danger">Archive</button></div></form>
   </dialog>
+  <aside id="floating-assistant" class="floating-assistant" hidden aria-label="Floating SHION Assistant">
+    <button id="floating-toggle" class="floating-orb" type="button" aria-expanded="false"><span class="companion-symbol" aria-hidden="true">✦</span><img data-character-asset="avatar" alt="SHION"><span>Ask SHION</span></button>
+    <section id="floating-card" class="floating-card" hidden>
+      <header><strong>SHION Assistant</strong><button id="floating-close" type="button" aria-label="Minimize assistant">×</button></header>
+      <div id="floating-messages" class="floating-messages"><p>今開いているWorkspaceページについて手伝えるよ。</p></div>
+      <form id="floating-form"><input id="floating-input" maxlength="4000" placeholder="SHIONに聞く…"><button type="submit">Send</button></form>
+      <a href="#/chat">Full Chatへ</a>
+    </section>
+  </aside>
   <script src="/app.js" defer></script>
 </body>
 </html>
