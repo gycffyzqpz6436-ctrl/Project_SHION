@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 import time
 from pathlib import Path
@@ -34,9 +35,28 @@ from chat_local import (  # noqa: E402
     validate_adapter,
     validate_generation,
 )
-from app.runtime.generation_policy import AdaptiveOutputBudget, RecentTurnContextStrategy
+from app.runtime.generation_policy import AdaptiveOutputBudget, RecentTurnContextStrategy, SelfCorrectionPolicy
 
 NEUTRAL_PROMPT_PATH = ROOT / "app" / "prompts" / "neutral_conversation.txt"
+SAFE_RESPONSE_FALLBACK = "応答を安全に表示できませんでした。もう一度お試しください。"
+
+
+def extract_visible_response(tokenizer, generated_ids) -> tuple[str, bool]:
+    """Decode only the visible Assistant channel, never a model's private draft channel."""
+    raw = tokenizer.decode(generated_ids, skip_special_tokens=False).strip()
+    channel = re.compile(r"<\|channel\>(thought|analysis|final)\s*(.*?)(?:<channel\|>|$)", re.I | re.S)
+    matches = list(channel.finditer(raw))
+    private_seen = any(match.group(1).casefold() in {"thought", "analysis"} for match in matches)
+    finals = [match.group(2).strip() for match in matches if match.group(1).casefold() == "final"]
+    if finals:
+        return finals[-1], private_seen
+    if private_seen:
+        visible = channel.sub(lambda match: "" if match.group(1).casefold() in {"thought", "analysis"}
+                              else match.group(2), raw).strip()
+        for token in getattr(tokenizer, "all_special_tokens", []):
+            visible = visible.replace(token, "")
+        return visible.strip(), True
+    return tokenizer.decode(generated_ids, skip_special_tokens=True).strip(), False
 
 
 def generation_eos_token_ids(model, tokenizer):
@@ -117,6 +137,7 @@ class LocalModelRuntime:
         self.cancel_events: dict[str, Event] = {}
         self.context_strategy = RecentTurnContextStrategy()
         self.output_budget = AdaptiveOutputBudget()
+        self.self_correction = SelfCorrectionPolicy()
         self.input_budget = int(self.model_spec.get("input_context_budget", 8192))
 
         self.tokenizer = AutoTokenizer.from_pretrained(
@@ -199,9 +220,19 @@ class LocalModelRuntime:
                 system_messages[0] = {**system_messages[0], "content": f"{system_messages[0]['content']}\n\n{memory_context}"}
             else:
                 system_messages.insert(0, {"role": "system", "content": memory_context})
+        correction_policy = getattr(self, "self_correction", SelfCorrectionPolicy())
+        correction = correction_policy.review(history, user_text)
+        if correction.active:
+            if system_messages and system_messages[0].get("role") == "system":
+                system_messages[0] = {
+                    **system_messages[0],
+                    "content": f"{system_messages[0]['content']}\n\n{correction_policy.REVIEW_INSTRUCTION}",
+                }
+            else:
+                system_messages.insert(0, {"role": "system", "content": correction_policy.REVIEW_INSTRUCTION})
         mandatory = [*system_messages, {"role": "user", "content": user_text}]
         prompt_started = time.perf_counter()
-        selection = self.context_strategy.select(history, mandatory, self._token_count, self.input_budget)
+        selection = self.context_strategy.select(correction.history, mandatory, self._token_count, self.input_budget)
         messages = selection.messages
         input_tokens = selection.total_input_tokens
         selection_build_ms = (time.perf_counter() - prompt_started) * 1000
@@ -223,13 +254,16 @@ class LocalModelRuntime:
                 criteria.append(guard)
             set_seed(self.generation["seed"] + self.turns.get(key, 0))
             generation_started = time.perf_counter()
+            decoding = ({"do_sample": False} if correction.active else {
+                "do_sample": True,
+                "temperature": self.generation["temperature"],
+                "top_p": self.generation["top_p"],
+                "top_k": self.generation["top_k"],
+            })
             with torch.inference_mode():
                 output_ids = self.model.generate(
                     **batch,
-                    do_sample=True,
-                    temperature=self.generation["temperature"],
-                    top_p=self.generation["top_p"],
-                    top_k=self.generation["top_k"],
+                    **decoding,
                     repetition_penalty=self.generation["repetition_penalty"],
                     max_new_tokens=effective_max_new_tokens,
                     eos_token_id=generation_eos_token_ids(self.model, self.tokenizer),
@@ -241,9 +275,9 @@ class LocalModelRuntime:
             generation_ms = round((time.perf_counter() - generation_started) * 1000)
         self.cancel_events.pop(session_id, None)
         generated_ids = output_ids[0, batch["input_ids"].shape[1]:]
-        response = self.tokenizer.decode(
-            generated_ids, skip_special_tokens=True
-        ).strip()
+        response, private_channel_filtered = extract_visible_response(self.tokenizer, generated_ids)
+        if not response and private_channel_filtered:
+            response = SAFE_RESPONSE_FALLBACK
         output_tokens = int(generated_ids.shape[0])
         eos_ids = generation_eos_token_ids(self.model, self.tokenizer)
         eos_ids = {int(eos_ids)} if isinstance(eos_ids, int) else {int(item) for item in eos_ids}
@@ -273,6 +307,10 @@ class LocalModelRuntime:
             "output_budget_tokens": effective_max_new_tokens,
             "input_budget_tokens": self.input_budget,
             "prompt_build_ms": prompt_build_ms,
+            "self_correction_review": correction.active,
+            "assistant_history_withheld": correction.assistant_messages_withheld,
+            "private_channel_filtered": private_channel_filtered,
+            "decoding_mode": "verification_greedy" if correction.active else "conversation_sampling",
         }
         return response, telemetry
 

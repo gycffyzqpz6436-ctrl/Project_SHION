@@ -4,6 +4,7 @@ from pathlib import Path
 from threading import Lock
 from threading import Event
 from unittest.mock import Mock
+from unittest.mock import patch
 
 import torch
 
@@ -12,15 +13,130 @@ from app.runtime.model_runtime import (
     CancellationStoppingCriteria,
     RepeatedSequenceStoppingCriteria,
     effective_generation_limit,
+    extract_visible_response,
     generation_eos_token_ids,
 )
-from app.runtime.generation_policy import AdaptiveOutputBudget, RecentTurnContextStrategy
+from app.runtime.generation_policy import AdaptiveOutputBudget, RecentTurnContextStrategy, SelfCorrectionPolicy
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class RepetitionGuardTests(unittest.TestCase):
+    def test_self_correction_detects_owner_doubt_without_arithmetic_rules(self):
+        policy = SelfCorrectionPolicy()
+        for message in ("違う", "？", "本当？", "それ間違ってない？", "200", "再確認してください"):
+            self.assertTrue(policy.is_review_request(message), message)
+        for message in ("こんにちは", "1+199は？", "詳しく説明して"):
+            self.assertFalse(policy.is_review_request(message), message)
+
+    def test_self_correction_withholds_challenged_assistant_claims_by_provenance(self):
+        policy = SelfCorrectionPolicy()
+        history = [
+            {"role": "user", "content": "今夜更かし中"},
+            {"role": "assistant", "content": "何をしていますか？"},
+            {"role": "user", "content": "１＋１９９＝"},
+            {"role": "assistant", "content": "201です"},
+            {"role": "user", "content": "？"},
+            {"role": "assistant", "content": "201です"},
+        ]
+        review = policy.review(history, "200")
+        self.assertTrue(review.active)
+        self.assertEqual(review.assistant_messages_withheld, 2)
+        self.assertEqual([item["content"] for item in review.history],
+                         ["今夜更かし中", "何をしていますか？", "1+199=", "?"])
+        self.assertNotIn("201です", [item["content"] for item in review.history])
+
+    def test_numeric_answer_to_assistant_question_is_not_misclassified(self):
+        policy = SelfCorrectionPolicy()
+        history = [{"role": "user", "content": "年齢を聞いて"},
+                   {"role": "assistant", "content": "何歳ですか？"}]
+        self.assertFalse(policy.review(history, "30").active)
+
+    def test_gemma_visible_channel_excludes_thought_and_draft(self):
+        tokenizer = Mock(all_special_tokens=["<eos>"])
+        tokenizer.decode.side_effect = lambda _ids, skip_special_tokens=False: (
+            "<|channel>thought\nprivate draft<channel|>\n"
+            "<|channel>final\n表示する回答です。<channel|><eos>"
+            if not skip_special_tokens else "private draft 表示する回答です。"
+        )
+        visible, filtered = extract_visible_response(tokenizer, [1, 2, 3])
+        self.assertEqual(visible, "表示する回答です。")
+        self.assertTrue(filtered)
+
+    def test_thought_only_generation_returns_no_private_text(self):
+        tokenizer = Mock(all_special_tokens=[])
+        tokenizer.decode.side_effect = lambda _ids, skip_special_tokens=False: (
+            "<|channel>thought\nprivate draft without final" if not skip_special_tokens else "private draft without final"
+        )
+        visible, filtered = extract_visible_response(tokenizer, [1, 2, 3])
+        self.assertEqual(visible, "")
+        self.assertTrue(filtered)
+
+    def test_fixed_seed_reproduction_can_recover_after_owner_challenge(self):
+        class Batch(dict):
+            def to(self, _device):
+                return self
+
+        rendered_messages = []
+
+        def apply_chat_template(messages, return_tensors=None, return_dict=False, **_kwargs):
+            rendered_messages[:] = messages
+            if return_tensors is None:
+                return {"input_ids": list(range(24))} if return_dict else list(range(24))
+            return Batch(input_ids=torch.arange(24).reshape(1, 24))
+
+        def generate(**kwargs):
+            reviewing = any(SelfCorrectionPolicy.REVIEW_INSTRUCTION in item.get("content", "")
+                            for item in rendered_messages)
+            answer = 200 if reviewing else 201
+            return torch.cat((kwargs["input_ids"], torch.tensor([[answer]])), dim=1)
+
+        tokenizer = Mock(
+            apply_chat_template=apply_chat_template,
+            encode=Mock(return_value=[1]),
+            eos_token_id=1,
+            pad_token_id=0,
+            all_special_tokens=[],
+        )
+        tokenizer.decode.side_effect = lambda ids, skip_special_tokens=False: str(int(ids[0]))
+        runtime = LocalModelRuntime.__new__(LocalModelRuntime)
+        runtime.neutral_prompt = "neutral"
+        runtime.prompt_path = ROOT / "docs" / "unused.md"
+        runtime.chat_template_options = {"enable_thinking": False}
+        runtime.tokenizer = tokenizer
+        runtime.model = Mock(device=torch.device("cpu"), generate=generate,
+                             generation_config=Mock(eos_token_id=1))
+        runtime.generation = {"seed": 3407, "temperature": .7, "top_p": .8, "top_k": 20,
+                              "repetition_penalty": 1.1, "max_new_tokens": 512}
+        runtime.context_limit = 1024
+        runtime.repetition_guard = None
+        runtime.context_strategy = RecentTurnContextStrategy()
+        runtime.output_budget = AdaptiveOutputBudget()
+        runtime.self_correction = SelfCorrectionPolicy()
+        runtime.input_budget = 6144
+        runtime.lock = Lock()
+        runtime.turns = {("fixture", "neutral"): 1}
+        history = [{"role": "user", "content": "今夜更かし中"},
+                   {"role": "assistant", "content": "まだ起きているんですね。"}]
+
+        seeds = []
+        with patch("app.runtime.model_runtime.set_seed", side_effect=seeds.append):
+            first, _ = runtime.generate("fixture", "neutral", history, "１＋１９９＝")
+            history.extend(({"role": "user", "content": "１＋１９９＝"},
+                            {"role": "assistant", "content": first}))
+            corrected, telemetry = runtime.generate("fixture", "neutral", history, "？")
+
+        self.assertEqual(first, "201")  # Captures the observed sampling failure as a fixture.
+        self.assertEqual(corrected, "200")
+        self.assertEqual(seeds, [3408, 3409])
+        self.assertTrue(telemetry["self_correction_review"])
+        self.assertEqual(telemetry["assistant_history_withheld"], 1)
+        self.assertEqual(telemetry["decoding_mode"], "verification_greedy")
+        rendered_content = [item.get("content") for item in rendered_messages]
+        self.assertNotIn("201", rendered_content)
+        self.assertIn("1+199=", rendered_content)
+
     def test_cancellation_stopping_criteria_is_owner_controlled(self):
         event = Event()
         guard = CancellationStoppingCriteria(event)

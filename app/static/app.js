@@ -306,6 +306,10 @@ function showDetails(metadata) {
     ["Current message tokens", generation.current_message_tokens],
     ["Output tokens", generation.output_tokens], ["Tokens/sec", generation.tokens_per_second],
     ["Stop reason", generation.stop_reason], ["Output budget", generation.output_budget_tokens],
+    ["Self-correction review", generation.self_correction_review],
+    ["Assistant answers withheld", generation.assistant_history_withheld],
+    ["Private channel filtered", generation.private_channel_filtered],
+    ["Decoding mode", generation.decoding_mode],
     ["Prompt build", generation.prompt_build_ms != null ? `${generation.prompt_build_ms} ms` : null],
     ["Persistence", "SQLite persistent history"],
   ].filter(([, value]) => value !== undefined && value !== null);

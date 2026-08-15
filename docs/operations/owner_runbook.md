@@ -287,6 +287,8 @@ Open an assistant message's **Details** action to inspect content-free generatio
 
 High post-generation CUDA reservation alone does not authorize `empty_cache()` or model unload changes. Conditional CUDA cache release remains a future Performance Owner Gate; record idle/peak/post-settle VRAM and compare latency before proposing any policy change.
 
+When an Owner challenge such as `？`, `違う`, a numeric correction, or a recheck request follows an Assistant answer, Message Details shows `Self-correction review: true` and `Decoding mode: verification_greedy`. The stored Conversation remains complete, but challenged Assistant claims are withheld from that independent review call. `Private channel filtered: true` means Gemma emitted a non-display channel that was excluded before persistence; private draft text is never included in Details.
+
 ### Port確認
 
 ```powershell
