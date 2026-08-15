@@ -29,7 +29,6 @@ class VoiceServiceClient:
         self._process: subprocess.Popen | None = None
         self._lock = threading.Lock()
         self._state, self._error = "AVAILABLE", None
-        self._lab_artifacts: dict[str, tuple[Path, dict]] = {}
         self.gpu_gate = gpu_gate
 
     def _request(self, path: str, payload: dict | None = None, timeout: int = 10) -> dict:
@@ -114,26 +113,33 @@ class VoiceServiceClient:
                         "noise": .6, "noise_w": .8, "assist_text": "", "assist_text_weight": .7}
                     preset_id = f"developer:{developer_model}:{style}"
                 else: raise ValueError("No approved SHION voice preset")
-                settings["text"] = self.normalize(source["text"])
+                display_text = self.normalize(source["text"])
+                settings["text"] = self.conversations.apply_pronunciation(display_text, source["character_id"])
                 self._state = "GENERATING"
                 generated = self._request("/api/generate", settings, timeout=180)
                 target = Path(generated["path"]).resolve()
                 if self.artifact_root != target and self.artifact_root not in target.parents:
                     raise VoiceUnavailable("Voice service returned an unsafe artifact path")
                 artifact_id = str(uuid.uuid4()); created = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                target = self._claim_artifact(target, artifact_id)
                 attempt = self.conversations.next_voice_attempt(message_id, response_version, preset_id)
                 generation_metadata = {**generated["metrics"], "voice_model_id": generated["settings"]["voice_model"],
                     "voice_style": generated["settings"]["style"], "voice_preset_id": preset_id}
                 record = {"artifact_id": artifact_id, "message_id": message_id, "response_version": response_version,
+                    "session_id": source["session_id"], "source_type": "message", "source_text": display_text,
+                    "tts_text": settings["text"], "character_id": source["character_id"],
                     "voice_model_id": generated["settings"]["voice_model"], "voice_preset_id": preset_id,
                     "voice_style": generated["settings"]["style"],
                     "voice_revision": self._voice_revision(meta, generated["settings"]["voice_model"]),
                     "created_at": created, "duration": generated["metrics"]["wav_duration_seconds"],
+                    "latency_seconds": generated["metrics"].get("latency_seconds", 0), "file_size_bytes": target.stat().st_size,
+                    "parameters": self._voice_parameters(generated["settings"]),
                     "relative_path": str(target.relative_to(self.artifact_root)), "attempt": attempt,
                     "generation_metadata": generation_metadata}
                 self.conversations.save_voice_artifact(record)
                 self._state = "READY"
-                return {**record, "audio_url": f"/api/voice/artifacts/{artifact_id}", "retry": retry}
+                return {**self._public_artifact(record), "generation_metadata": generation_metadata,
+                    "audio_url": f"/api/voice/artifacts/{artifact_id}", "retry": retry}
             except Exception as error:
                 self._state, self._error = "ERROR", str(error)
                 raise
@@ -152,27 +158,41 @@ class VoiceServiceClient:
             if item.get("id") == model_id: return item.get("revision")
         return None
 
+    @staticmethod
+    def _voice_parameters(settings: dict) -> dict:
+        allowed = {"style_weight", "length", "pitch_scale", "intonation_scale", "sdp_ratio", "noise", "noise_w",
+                   "assist_text_weight"}
+        return {key: settings[key] for key in allowed if key in settings and isinstance(settings[key], (int, float))}
+
+    def _claim_artifact(self, source: Path, artifact_id: str) -> Path:
+        destination = (self.artifact_root / "indexed" / f"{artifact_id}.wav").resolve()
+        if self.artifact_root not in destination.parents: raise VoiceUnavailable("unsafe Voice artifact destination")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if source != destination:
+            source.replace(destination)
+        return destination
+
+    @staticmethod
+    def _public_artifact(record: dict) -> dict:
+        return {key: value for key, value in record.items() if key not in {"relative_path", "generation_metadata"}}
+
     def artifact(self, artifact_id: str) -> tuple[Path, dict]:
-        if artifact_id in self._lab_artifacts:
-            target, record = self._lab_artifacts[artifact_id]
-            if target.is_file() and self.artifact_root in target.parents:
-                return target, record
-            raise FileNotFoundError(artifact_id)
         record = self.conversations.get_voice_artifact(artifact_id)
         target = (self.artifact_root / record["relative_path"]).resolve()
         if self.artifact_root not in target.parents or not target.is_file() or target.suffix.lower() != ".wav":
             raise FileNotFoundError(artifact_id)
         return target, record
 
-    def generate_lab(self, text: str, parameters: dict, request_id: str | None = None) -> dict:
-        """Generate an ephemeral Voice Lab artifact without changing SHION Default."""
+    def generate_lab(self, text: str, parameters: dict, request_id: str | None = None,
+                     character_id: str = "shion") -> dict:
+        """Generate a persistent Voice Lab artifact without changing SHION Default."""
         if self.gpu_gate:
             identity = {"session_id": request_id, "request_id": request_id}
             return self.gpu_gate.submit_voice(("lab", request_id), identity,
-                lambda: self._generate_lab(text, parameters))
-        return self._generate_lab(text, parameters)
+                lambda: self._generate_lab(text, parameters, character_id))
+        return self._generate_lab(text, parameters, character_id)
 
-    def _generate_lab(self, text: str, parameters: dict) -> dict:
+    def _generate_lab(self, text: str, parameters: dict, character_id: str = "shion") -> dict:
         normalized = self.normalize(text)
         if not normalized:
             raise ValueError("TTS text is required")
@@ -188,20 +208,65 @@ class VoiceServiceClient:
             approved = {item["preset_name"]: item for item in meta.get("presets", []) if item.get("owner_approved") is True}
             preset = approved.get("SHION Default")
             if not preset: raise VoiceUnavailable("SHION Default is unavailable")
-            payload = {**preset, **settings, "text": normalized}
+            transformed = self.conversations.apply_pronunciation(normalized, character_id)
+            payload = {**preset, **settings, "text": transformed}
             self._state = "GENERATING"
             generated = self._request("/api/generate", payload, timeout=180)
             target = Path(generated["path"]).resolve()
             if self.artifact_root not in target.parents: raise VoiceUnavailable("unsafe Voice artifact")
             artifact_id = str(uuid.uuid4())
-            record = {"artifact_id": artifact_id, "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            target = self._claim_artifact(target, artifact_id)
+            record = {"artifact_id": artifact_id, "message_id": None, "response_version": None, "session_id": None,
+                      "source_type": "lab", "source_text": normalized, "tts_text": transformed, "character_id": character_id,
+                      "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                       "voice_model_id": generated["settings"]["voice_model"], "voice_style": generated["settings"]["style"],
+                      "voice_revision": self._voice_revision(meta, generated["settings"]["voice_model"]),
                       "voice_preset_id": "SHION Default", "duration": generated["metrics"]["wav_duration_seconds"],
                       "latency_seconds": generated["metrics"]["latency_seconds"], "parameters": settings,
-                      "text_preview": normalized[:80], "file_size_bytes": target.stat().st_size}
-            self._lab_artifacts[artifact_id] = (target, record)
+                      "text_preview": normalized[:80], "file_size_bytes": target.stat().st_size,
+                      "relative_path": str(target.relative_to(self.artifact_root)), "attempt": 1,
+                      "generation_metadata": generated["metrics"]}
+            self.conversations.save_voice_artifact(record)
             self._state = "READY"
-            return {**record, "audio_url": f"/api/voice/artifacts/{artifact_id}"}
+            return {**self._public_artifact(record), "generation_metadata": generated["metrics"],
+                "audio_url": f"/api/voice/artifacts/{artifact_id}"}
+
+    def list_artifacts(self, character_id: str = "shion") -> list[dict]:
+        records = self.conversations.list_voice_artifact_index(character_id)
+        for record in records:
+            target = (self.artifact_root / record["relative_path"]).resolve()
+            available = self.artifact_root in target.parents and target.is_file() and target.suffix.lower() == ".wav"
+            record["available"] = available
+            record["audio_url"] = f"/api/voice/artifacts/{record['artifact_id']}" if available else None
+            if available and not record["file_size_bytes"]:
+                record["file_size_bytes"] = target.stat().st_size
+            record["text_preview"] = record["source_text"][:80] or "Existing message artifact"
+        return [self._public_artifact(record) for record in records]
+
+    def set_favorite(self, artifact_id: str, favorite: bool) -> dict:
+        self.conversations.set_voice_artifact_favorite(artifact_id, favorite)
+        return self._public_artifact(self.conversations.get_voice_artifact(artifact_id))
+
+    def delete_artifact(self, artifact_id: str) -> dict:
+        record = self.conversations.get_voice_artifact(artifact_id)
+        target = (self.artifact_root / record["relative_path"]).resolve()
+        if self.artifact_root not in target.parents or target.suffix.lower() != ".wav":
+            raise VoiceUnavailable("unsafe Voice artifact")
+        if target.is_file():
+            target.unlink()
+        deleted = self.conversations.delete_voice_artifact(artifact_id)
+        return {"artifact_id": artifact_id, "deleted": True, "file_removed": not target.exists(), "source_type": deleted["source_type"]}
+
+    def retry_artifact(self, artifact_id: str, request_id: str) -> dict:
+        record = self.conversations.get_voice_artifact(artifact_id)
+        if record["source_type"] == "message" and record.get("message_id"):
+            preset = record["voice_preset_id"]
+            if preset.startswith("developer:"):
+                _, model_id, style = preset.split(":", 2)
+                return self.generate(record["message_id"], int(record["response_version"]), None, model_id, style,
+                                     retry=True, session_id=request_id)
+            return self.generate(record["message_id"], int(record["response_version"]), preset, retry=True, session_id=request_id)
+        return self.generate_lab(record["source_text"], record["parameters"], request_id, record["character_id"])
 
     def status(self) -> dict:
         meta = self.metadata(False)

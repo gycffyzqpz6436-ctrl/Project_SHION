@@ -188,6 +188,16 @@ class Handler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.OK, status)
         elif path == "/api/voice/meta":
             self._json(HTTPStatus.OK, self.server.voice.metadata(True) if self.server.voice else {"state": "UNAVAILABLE", "approved_presets": [], "developer_models": {}})
+        elif path == "/api/voice/artifacts":
+            if not self.server.voice: self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Voice unavailable"}); return
+            character_id = parse_qs(urlparse(self.path).query).get("character_id", ["shion"])[0]
+            if not character_id.isascii(): self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid character"}); return
+            self._json(HTTPStatus.OK, {"artifacts": self.server.voice.list_artifacts(character_id)})
+        elif path == "/api/voice/pronunciations":
+            repository = self.server.controller.conversations
+            if not repository: self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "persistent history unavailable"}); return
+            character_id = parse_qs(urlparse(self.path).query).get("character_id", ["shion"])[0]
+            self._json(HTTPStatus.OK, {"rules": repository.list_pronunciation_rules(character_id)})
         elif path.startswith("/api/voice/artifacts/"):
             if not self.server.voice: self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Voice unavailable"}); return
             artifact_id = path.removeprefix("/api/voice/artifacts/")
@@ -358,7 +368,31 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(text, str): raise ValueError("tts_text required")
                 parameters = payload.get("parameters", {})
                 if not isinstance(parameters, dict): raise ValueError("invalid parameters")
-                self._json(HTTPStatus.CREATED, self.server.voice.generate_lab(text, parameters, session_id)); return
+                character_id = payload.get("character_id", "shion")
+                if not isinstance(character_id, str) or not character_id.isascii(): raise ValueError("invalid character")
+                self._json(HTTPStatus.CREATED, self.server.voice.generate_lab(text, parameters, session_id, character_id)); return
+            if path == "/api/voice/pronunciations":
+                repository = self.server.controller.conversations
+                if not repository: raise RuntimeError("persistent history unavailable")
+                allowed = {key: payload[key] for key in ("original_text", "replacement", "enabled", "character_id", "priority") if key in payload}
+                self._json(HTTPStatus.CREATED, repository.create_pronunciation_rule(allowed)); return
+            if path == "/api/voice/pronunciation/test":
+                repository = self.server.controller.conversations
+                text, character_id = payload.get("text"), payload.get("character_id", "shion")
+                if not repository or not isinstance(text, str) or not isinstance(character_id, str): raise ValueError("invalid pronunciation test")
+                self._json(HTTPStatus.OK, {"display_text": text, "tts_text": repository.apply_pronunciation(text, character_id)}); return
+            if path.startswith("/api/voice/artifacts/"):
+                if not self.server.voice: raise VoiceUnavailable("Voice unavailable")
+                suffix = path.removeprefix("/api/voice/artifacts/")
+                if "/" not in suffix: self._json(HTTPStatus.NOT_FOUND, {"error": "not found"}); return
+                artifact_id, action = suffix.split("/", 1)
+                if action == "favorite":
+                    favorite = payload.get("favorite")
+                    if not isinstance(favorite, bool): raise ValueError("invalid favorite")
+                    self._json(HTTPStatus.OK, self.server.voice.set_favorite(artifact_id, favorite)); return
+                if action == "retry":
+                    self._json(HTTPStatus.CREATED, self.server.voice.retry_artifact(artifact_id, session_id)); return
+                self._json(HTTPStatus.NOT_FOUND, {"error": "not found"}); return
             if path == "/api/assistant":
                 message, context = payload.get("message"), payload.get("context", {})
                 if not isinstance(message, str) or not message.strip() or len(message) > 4000 or not isinstance(context, dict): raise ValueError("invalid assistant request")
@@ -433,11 +467,15 @@ class Handler(BaseHTTPRequestHandler):
             payload = self._read_json(); session_id = payload.pop("session_id", None)
             if not isinstance(session_id, str) or not 8 <= len(session_id) <= 80 or not session_id.isascii(): raise ValueError("invalid session_id")
             path = urlparse(self.path).path
+            if path.startswith("/api/voice/pronunciations/"):
+                repository = self.server.controller.conversations
+                if not repository: raise RuntimeError("persistent history unavailable")
+                self._json(HTTPStatus.OK, repository.update_pronunciation_rule(path.removeprefix("/api/voice/pronunciations/"), payload)); return
             if not path.startswith("/api/memory/"): self._json(HTTPStatus.NOT_FOUND, {"error": "not found"}); return
             memory = self.server.controller.orchestrator.long_term_memory
             if not memory.available: raise RuntimeError("Memory unavailable")
             self._json(HTTPStatus.OK, memory.update(path.removeprefix("/api/memory/"), payload))
-        except KeyError: self._json(HTTPStatus.NOT_FOUND, {"error": "Memory not found"})
+        except KeyError: self._json(HTTPStatus.NOT_FOUND, {"error": "Record not found"})
         except SensitiveMemoryError as error: self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
         except (ValueError, json.JSONDecodeError): self._json(HTTPStatus.BAD_REQUEST, {"error": "Invalid Memory request"})
         except Exception:
@@ -450,11 +488,18 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(session_id, str) or not 8 <= len(session_id) <= 80 or not session_id.isascii(): raise ValueError("invalid session_id")
             if payload.get("confirm") != "DELETE": raise ValueError("hard delete confirmation required")
             path = urlparse(self.path).path
+            if path.startswith("/api/voice/pronunciations/"):
+                repository = self.server.controller.conversations
+                if not repository: raise RuntimeError("persistent history unavailable")
+                repository.delete_pronunciation_rule(path.removeprefix("/api/voice/pronunciations/")); self._json(HTTPStatus.OK, {"ok": True, "deleted": True}); return
+            if path.startswith("/api/voice/artifacts/"):
+                if not self.server.voice: raise VoiceUnavailable("Voice unavailable")
+                self._json(HTTPStatus.OK, self.server.voice.delete_artifact(path.removeprefix("/api/voice/artifacts/"))); return
             if not path.startswith("/api/memory/"): self._json(HTTPStatus.NOT_FOUND, {"error": "not found"}); return
             memory = self.server.controller.orchestrator.long_term_memory
             if not memory.available: raise RuntimeError("Memory unavailable")
             memory.delete(path.removeprefix("/api/memory/")); self._json(HTTPStatus.OK, {"ok": True, "deleted": True})
-        except KeyError: self._json(HTTPStatus.NOT_FOUND, {"error": "Memory not found"})
+        except KeyError: self._json(HTTPStatus.NOT_FOUND, {"error": "Record not found"})
         except (ValueError, json.JSONDecodeError): self._json(HTTPStatus.BAD_REQUEST, {"error": "Hard delete confirmation required"})
         except Exception:
             LOG.error("Memory delete failed\n%s", traceback.format_exc()); self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Memory delete unavailable"})

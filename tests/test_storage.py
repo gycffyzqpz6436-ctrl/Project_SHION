@@ -93,6 +93,26 @@ class ConversationRepositoryTests(unittest.TestCase):
             repository = ConversationRepository(path, enabled=True); repository.migrate()
             self.assertEqual(repository.load_session("legacy")["character_id"], "shion")
 
+    def test_schema_v4_voice_artifacts_migrate_into_persistent_index(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "chat.db"; repository = ConversationRepository(path, enabled=True); repository.migrate()
+            repository.create_session({"session_id":"legacy","title":"Legacy","created_at":"x","updated_at":"x","conversation_mode":"minimal"})
+            repository.save_message({"message_id":"assistant","session_id":"legacy","role":"assistant","created_at":"x","parts":[{"type":"text","text":"hello"}]})
+            with closing(repository.connect()) as connection:
+                connection.execute("DROP TABLE voice_artifacts")
+                connection.execute("""CREATE TABLE voice_artifacts(
+                    artifact_id TEXT PRIMARY KEY,message_id TEXT NOT NULL REFERENCES messages(message_id) ON DELETE CASCADE,
+                    response_version INTEGER NOT NULL,voice_model_id TEXT NOT NULL,voice_revision TEXT,voice_preset_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,duration REAL NOT NULL,relative_path TEXT NOT NULL UNIQUE,attempt INTEGER NOT NULL,
+                    generation_json TEXT NOT NULL,UNIQUE(message_id,response_version,voice_preset_id,attempt))""")
+                connection.execute("INSERT INTO voice_artifacts VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                                   ("artifact","assistant",1,"nene_v3_candidate","rev","SHION Default","x",1.0,"legacy.wav",1,"{}"))
+                connection.execute("UPDATE schema_meta SET version=4"); connection.commit()
+            repository.migrate(); migrated = repository.get_voice_artifact("artifact")
+            self.assertEqual(migrated["source_type"], "message")
+            self.assertEqual(migrated["character_id"], "shion")
+            self.assertEqual(migrated["session_id"], "legacy")
+
     def test_transaction_rolls_back(self):
         with tempfile.TemporaryDirectory() as temporary:
             repository = ConversationRepository(Path(temporary) / "chat.db", enabled=True)

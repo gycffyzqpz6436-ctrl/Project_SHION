@@ -264,7 +264,8 @@ change the approved Character or claim unavailable backends.
 Voice Lab exposes only adapter-verified allowlisted parameters as bounded sliders.
 Display text and TTS transformation remain separate. Direct accent/phoneme control
 is labelled unsupported until the isolated Style-Bert-VITS2 adapter proves a safe
-contract; pronunciation dictionary persistence remains an Owner Gate.
+contract. Phase G persists character-aware replacement rules and applies them only
+to the TTS projection; Conversation display text is never rewritten.
 
 ### Phase D-E GPU Resource Safety Owner Review
 
@@ -320,6 +321,10 @@ SHION Chat never imports Style-Bert-VITS2. `VoiceServiceClient` is an applicatio
 Read Aloud accepts only a persisted assistant `message_id` plus response version. The server retrieves that version from SQLite, applies deterministic Markdown/URL normalization with a 500-character ceiling, and sends it to the isolated backend. Arbitrary public TTS text and arbitrary paths are not accepted. TTS requests are serialized by an exclusive Voice lock.
 
 Schema v2 adds `voice_artifacts`, storing stable artifact ID, message/version identity, fixed Voice model revision, preset ID, attempt, timestamps, duration, relative path and metrics. WAV bytes remain under `D:\AI\Project_SHION\artifacts\voice`. The browser resolves only a registered UUID; the resolver confines the relative path to that root. Responses use `audio/wav`, `nosniff`, private/no-store caching and byte ranges for Safari. Automatic deletion remains OFF.
+
+Phase G schema v5 extends this into a cross-session Voice Artifact Index for both Chat and Voice Lab. It stores source type/text, TTS-transformed text, character, model/revision/style/preset, bounded parameters, timestamp, latency, duration, size, favorite, and optional message/version provenance. Replay resolves only an indexed UUID. Retry passes through `GpuResourceGate`; Restore Parameters changes only the Lab controls. Delete requires Owner confirmation and removes the confined WAV plus its metadata. If a WAV is missing after restart or external maintenance, metadata remains visible as recoverable and Retry can create a new artifact.
+
+`pronunciation_rules` stores original text, replacement, enabled state, character ID, priority, and timestamps. Rules are deterministic literal replacements ordered by priority and are applied after display-text normalization immediately before TTS. CRUD and preview are Owner actions; no rule changes Conversation content or Long-Term Memory.
 
 Normal mode lists only Owner-approved presets. The Owner-approved `SHION Default` preset resolves independently of browser storage to Voice Model `nene_v3_candidate` (Nene V3) with fixed `Bright` style. It is selected after a new browser session, reload and server restart without enabling Developer Voice. The underlying Model Registry entry remains separate and retains Neutral/Bright/Soft; Nene Whisper, JVNV and other Ready models remain explicit Developer Voice choices. Auto Play is OFF by default and stored only as tab-local UI preference; when enabled it uses the same selected approved preset. Browser autoplay rejection is reported as a tap-to-play state. Only one audio element plays at once; Voice Retry creates a new attempt without deleting the old WAV or changing text/response versions.
 

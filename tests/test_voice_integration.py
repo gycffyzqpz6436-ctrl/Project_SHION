@@ -80,7 +80,7 @@ class VoiceIntegrationTests(unittest.TestCase):
         with self.assertRaises(VoiceUnavailable): self.client.generate("assistant-0001", 1, None, "F1")
         self.assertEqual(self.repository.load_session("session-0001")["messages"][0]["message_id"], "assistant-0001")
 
-    def test_voice_lab_is_ephemeral_and_keeps_approved_preset(self):
+    def test_voice_lab_is_persistent_and_keeps_approved_preset(self):
         self.client.approved = True
         before = self.repository.list_voice_artifacts("assistant-0001", 1)
         result = self.client.generate_lab("**Nene** https://example.com", {
@@ -92,9 +92,46 @@ class VoiceIntegrationTests(unittest.TestCase):
         self.assertEqual(record["voice_style"], "Bright")
         self.assertEqual(record["voice_preset_id"], "SHION Default")
         self.assertEqual(record["parameters"]["pitch_scale"], 1.05)
-        self.assertEqual(record["text_preview"], "Nene URL")
+        self.assertEqual(record["source_text"], "Nene URL")
         self.assertGreater(record["file_size_bytes"], 44)
         self.assertEqual(self.repository.list_voice_artifacts("assistant-0001", 1), before)
+        indexed = self.repository.list_voice_artifact_index("shion")
+        self.assertEqual(indexed[0]["artifact_id"], result["artifact_id"])
+        self.assertEqual(indexed[0]["source_type"], "lab")
+        restarted = FakeVoiceClient(self.root, Path.cwd(), self.repository)
+        self.assertEqual(restarted.artifact(result["artifact_id"])[1]["source_text"], "Nene URL")
+
+    def test_character_pronunciation_crud_and_tts_only_transformation(self):
+        self.client.approved = True
+        rule = self.repository.create_pronunciation_rule({"original_text": "SHION", "replacement": "シオン",
+                                                           "character_id": "shion", "priority": 200})
+        other = self.repository.create_pronunciation_rule({"original_text": "SHION", "replacement": "別読み",
+                                                            "character_id": "other", "priority": 200})
+        self.assertEqual(self.repository.apply_pronunciation("SHIONです", "shion"), "シオンです")
+        result = self.client.generate_lab("SHIONです", {})
+        record = self.repository.get_voice_artifact(result["artifact_id"])
+        self.assertEqual(record["source_text"], "SHIONです")
+        self.assertEqual(record["tts_text"], "シオンです")
+        self.repository.update_pronunciation_rule(rule["rule_id"], {"enabled": False})
+        self.assertEqual(self.repository.apply_pronunciation("SHIONです", "shion"), "SHIONです")
+        self.repository.delete_pronunciation_rule(other["rule_id"])
+        self.assertEqual(self.repository.list_pronunciation_rules("other"), [])
+
+    def test_artifact_favorite_missing_retry_restore_and_delete(self):
+        self.client.approved = True
+        result = self.client.generate_lab("persistent voice", {"pitch_scale": 1.05})
+        artifact_id = result["artifact_id"]
+        self.client.set_favorite(artifact_id, True)
+        record = self.repository.get_voice_artifact(artifact_id)
+        self.assertTrue(record["favorite"]); self.assertEqual(record["parameters"]["pitch_scale"], 1.05)
+        path, _ = self.client.artifact(artifact_id); path.unlink()
+        missing = next(item for item in self.client.list_artifacts() if item["artifact_id"] == artifact_id)
+        self.assertFalse(missing["available"]); self.assertIsNone(missing["audio_url"])
+        retry = self.client.retry_artifact(artifact_id, "voice-retry-session")
+        self.assertTrue(self.client.artifact(retry["artifact_id"])[0].is_file())
+        deleted = self.client.delete_artifact(retry["artifact_id"])
+        self.assertTrue(deleted["file_removed"])
+        with self.assertRaises(KeyError): self.repository.get_voice_artifact(retry["artifact_id"])
 
     def test_voice_lab_rejects_parameters_outside_owner_allowlist(self):
         self.client.approved = True

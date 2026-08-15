@@ -175,6 +175,12 @@ D:\AI\Project_SHION\artifacts\voice
 
 通常TTSは `HF_HUB_OFFLINE=1`、`TRANSFORMERS_OFFLINE=1`、`local_files_only`相当の完全ローカル運用です。Hugging Face Preview/Downloadの明示操作だけが別の一時online policyを使用します。
 
+### Phase G persistent Voice operations
+
+Voice LabのPronunciation DictionaryでSHION用のoriginal/replacement、priority、enabled状態を管理します。`Test pronunciation`はTTS変換結果だけをpreviewし、Conversation表示文を変更しません。
+
+Voice Artifact IndexはChatとVoice Labのartifactを再起動後も表示します。Replay、Retry、Restore Parameters、Favorite、DeleteをOwner操作できます。`WAV missing`はDB破損ではなくrecoverable状態です。Retryで新しいartifactを生成し、不要なmissing metadataは確認付きDeleteで削除してください。WAVは引き続きprivate runtime artifactでありGitへ追加しません。すべての生成・Retryは既存`GpuResourceGate`を通過します。
+
 ## 4. Image Generation / Stable Diffusion
 
 ### 現在の状態

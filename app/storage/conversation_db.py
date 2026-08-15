@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from contextlib import closing, contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta(version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS sessions(
@@ -42,13 +44,29 @@ CREATE TABLE IF NOT EXISTS feedback(
 CREATE INDEX IF NOT EXISTS idx_messages_session_created ON messages(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC);
 CREATE TABLE IF NOT EXISTS voice_artifacts(
- artifact_id TEXT PRIMARY KEY, message_id TEXT NOT NULL REFERENCES messages(message_id) ON DELETE CASCADE,
- response_version INTEGER NOT NULL, voice_model_id TEXT NOT NULL, voice_revision TEXT,
- voice_preset_id TEXT NOT NULL, created_at TEXT NOT NULL, duration REAL NOT NULL,
- relative_path TEXT NOT NULL UNIQUE, attempt INTEGER NOT NULL, generation_json TEXT NOT NULL,
- UNIQUE(message_id,response_version,voice_preset_id,attempt)
+ artifact_id TEXT PRIMARY KEY,
+ message_id TEXT REFERENCES messages(message_id) ON DELETE SET NULL,
+ response_version INTEGER, session_id TEXT REFERENCES sessions(session_id) ON DELETE SET NULL,
+ source_type TEXT NOT NULL DEFAULT 'message' CHECK(source_type IN ('message','lab')),
+ source_text TEXT NOT NULL DEFAULT '', tts_text TEXT NOT NULL DEFAULT '',
+ character_id TEXT NOT NULL DEFAULT 'shion', voice_model_id TEXT NOT NULL, voice_revision TEXT,
+ voice_style TEXT NOT NULL DEFAULT '', voice_preset_id TEXT NOT NULL,
+ parameters_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL,
+ latency REAL NOT NULL DEFAULT 0, duration REAL NOT NULL, file_size INTEGER NOT NULL DEFAULT 0,
+ favorite INTEGER NOT NULL DEFAULT 0 CHECK(favorite IN (0,1)),
+ relative_path TEXT NOT NULL UNIQUE, attempt INTEGER NOT NULL, generation_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_voice_artifacts_message ON voice_artifacts(message_id,response_version);
+CREATE INDEX IF NOT EXISTS idx_voice_artifacts_created ON voice_artifacts(created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_artifacts_attempt ON voice_artifacts(message_id,response_version,voice_preset_id,attempt) WHERE message_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS pronunciation_rules(
+ rule_id TEXT PRIMARY KEY, original_text TEXT NOT NULL, replacement TEXT NOT NULL,
+ enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+ character_id TEXT NOT NULL DEFAULT 'shion', priority INTEGER NOT NULL DEFAULT 100,
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+ UNIQUE(character_id,original_text)
+);
+CREATE INDEX IF NOT EXISTS idx_pronunciation_character ON pronunciation_rules(character_id,enabled,priority DESC,created_at);
 CREATE TABLE IF NOT EXISTS memories(
  id TEXT PRIMARY KEY,
  type TEXT NOT NULL CHECK(type IN ('preference','profile','project','relationship','decision','temporary','character_specific','system')),
@@ -109,17 +127,46 @@ class ConversationRepository:
             exists = connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_meta'").fetchone()
             if exists:
                 row = connection.execute("SELECT version FROM schema_meta LIMIT 1").fetchone()
-                if row and row["version"] not in {1, 2, 3, SCHEMA_VERSION}:
+                if row and row["version"] not in {1, 2, 3, 4, SCHEMA_VERSION}:
                     raise RuntimeError(f"unsupported conversation schema version: {row['version']}")
         with self.transaction() as connection:
             connection.executescript(SCHEMA)
             row = connection.execute("SELECT version FROM schema_meta LIMIT 1").fetchone()
             if row is None:
                 connection.execute("INSERT INTO schema_meta(version) VALUES (?)", (SCHEMA_VERSION,))
-            elif row["version"] in {1, 2, 3}:
+            elif row["version"] in {1, 2, 3, 4}:
                 columns = {item["name"] for item in connection.execute("PRAGMA table_info(sessions)")}
                 if "character_id" not in columns:
                     connection.execute("ALTER TABLE sessions ADD COLUMN character_id TEXT NOT NULL DEFAULT 'shion'")
+                voice_columns = {item["name"] for item in connection.execute("PRAGMA table_info(voice_artifacts)")}
+                if "source_type" not in voice_columns:
+                    connection.execute("ALTER TABLE voice_artifacts RENAME TO voice_artifacts_v4")
+                    connection.executescript("""
+                    CREATE TABLE voice_artifacts(
+                     artifact_id TEXT PRIMARY KEY,
+                     message_id TEXT REFERENCES messages(message_id) ON DELETE SET NULL,
+                     response_version INTEGER, session_id TEXT REFERENCES sessions(session_id) ON DELETE SET NULL,
+                     source_type TEXT NOT NULL DEFAULT 'message' CHECK(source_type IN ('message','lab')),
+                     source_text TEXT NOT NULL DEFAULT '', tts_text TEXT NOT NULL DEFAULT '',
+                     character_id TEXT NOT NULL DEFAULT 'shion', voice_model_id TEXT NOT NULL, voice_revision TEXT,
+                     voice_style TEXT NOT NULL DEFAULT '', voice_preset_id TEXT NOT NULL,
+                     parameters_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL,
+                     latency REAL NOT NULL DEFAULT 0, duration REAL NOT NULL, file_size INTEGER NOT NULL DEFAULT 0,
+                     favorite INTEGER NOT NULL DEFAULT 0 CHECK(favorite IN (0,1)),
+                     relative_path TEXT NOT NULL UNIQUE, attempt INTEGER NOT NULL, generation_json TEXT NOT NULL
+                    );
+                    INSERT INTO voice_artifacts(
+                     artifact_id,message_id,response_version,session_id,source_type,character_id,
+                     voice_model_id,voice_revision,voice_preset_id,created_at,duration,relative_path,attempt,generation_json
+                    ) SELECT v.artifact_id,v.message_id,v.response_version,m.session_id,'message',COALESCE(s.character_id,'shion'),
+                     v.voice_model_id,v.voice_revision,v.voice_preset_id,v.created_at,v.duration,v.relative_path,v.attempt,v.generation_json
+                     FROM voice_artifacts_v4 v LEFT JOIN messages m ON m.message_id=v.message_id
+                     LEFT JOIN sessions s ON s.session_id=m.session_id;
+                    DROP TABLE voice_artifacts_v4;
+                    CREATE INDEX idx_voice_artifacts_message ON voice_artifacts(message_id,response_version);
+                    CREATE INDEX idx_voice_artifacts_created ON voice_artifacts(created_at DESC);
+                    CREATE UNIQUE INDEX idx_voice_artifacts_attempt ON voice_artifacts(message_id,response_version,voice_preset_id,attempt) WHERE message_id IS NOT NULL;
+                    """)
                 connection.execute("UPDATE schema_meta SET version=?", (SCHEMA_VERSION,))
             connection.execute(
                 "INSERT OR IGNORE INTO memory_settings(setting_key,value_json,updated_at) VALUES('automatic_promotion','false',datetime('now'))"
@@ -285,13 +332,17 @@ class ConversationRepository:
 
     def get_assistant_version(self, message_id: str, version: int) -> dict:
         with closing(self.connect()) as connection:
-            message = connection.execute("SELECT role FROM messages WHERE message_id=?", (message_id,)).fetchone()
+            message = connection.execute(
+                "SELECT m.role,m.session_id,s.character_id FROM messages m JOIN sessions s ON s.session_id=m.session_id WHERE m.message_id=?",
+                (message_id,),
+            ).fetchone()
             if not message or message["role"] != "assistant": raise KeyError(message_id)
             row = connection.execute("SELECT content_json FROM response_versions WHERE message_id=? AND version=?", (message_id, version)).fetchone()
             if not row: raise KeyError(f"{message_id}:{version}")
             parts = json.loads(row["content_json"])
             text = "\n".join(item.get("text", "") for item in parts if item.get("type") == "text")
-            return {"message_id": message_id, "version": version, "text": text}
+            return {"message_id": message_id, "version": version, "text": text,
+                    "session_id": message["session_id"], "character_id": message["character_id"]}
 
     def next_voice_attempt(self, message_id: str, version: int, preset_id: str) -> int:
         with closing(self.connect()) as connection:
@@ -301,28 +352,113 @@ class ConversationRepository:
 
     def save_voice_artifact(self, artifact: dict) -> None:
         with self.transaction() as connection:
-            connection.execute("INSERT INTO voice_artifacts(artifact_id,message_id,response_version,voice_model_id,voice_revision,voice_preset_id,created_at,duration,relative_path,attempt,generation_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                (artifact["artifact_id"], artifact["message_id"], artifact["response_version"], artifact["voice_model_id"], artifact.get("voice_revision"),
-                 artifact["voice_preset_id"], artifact["created_at"], artifact["duration"], artifact["relative_path"], artifact["attempt"],
+            connection.execute("""INSERT INTO voice_artifacts(
+                artifact_id,message_id,response_version,session_id,source_type,source_text,tts_text,character_id,
+                voice_model_id,voice_revision,voice_style,voice_preset_id,parameters_json,created_at,latency,duration,
+                file_size,favorite,relative_path,attempt,generation_json
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (artifact["artifact_id"], artifact.get("message_id"), artifact.get("response_version"), artifact.get("session_id"),
+                 artifact.get("source_type", "message"), artifact.get("source_text", ""), artifact.get("tts_text", ""),
+                 artifact.get("character_id", "shion"), artifact["voice_model_id"], artifact.get("voice_revision"),
+                 artifact.get("voice_style", ""), artifact["voice_preset_id"], json.dumps(artifact.get("parameters", {})),
+                 artifact["created_at"], artifact.get("latency_seconds", 0), artifact["duration"], artifact.get("file_size_bytes", 0),
+                 int(bool(artifact.get("favorite"))), artifact["relative_path"], artifact["attempt"],
                  json.dumps(artifact.get("generation_metadata", {}))))
 
     def get_voice_artifact(self, artifact_id: str) -> dict:
         with closing(self.connect()) as connection:
             row = connection.execute("SELECT * FROM voice_artifacts WHERE artifact_id=?", (artifact_id,)).fetchone()
             if not row: raise KeyError(artifact_id)
-            result = dict(row); result["generation_metadata"] = json.loads(result.pop("generation_json"))
-            return result
+            return self._decode_voice_artifact(row)
 
     def list_voice_artifacts(self, message_id: str, version: int) -> list[dict]:
         with closing(self.connect()) as connection:
-            return [dict(row) for row in connection.execute("SELECT artifact_id,voice_model_id,voice_revision,voice_preset_id,created_at,duration,attempt FROM voice_artifacts WHERE message_id=? AND response_version=? ORDER BY attempt",
-                                                          (message_id, version))]
+            return [self._decode_voice_artifact(row) for row in connection.execute(
+                "SELECT * FROM voice_artifacts WHERE message_id=? AND response_version=? ORDER BY attempt", (message_id, version))]
+
+    def list_voice_artifact_index(self, character_id: str | None = None, limit: int = 200) -> list[dict]:
+        with closing(self.connect()) as connection:
+            if character_id:
+                rows = connection.execute("SELECT * FROM voice_artifacts WHERE character_id=? ORDER BY created_at DESC LIMIT ?",
+                                          (character_id, min(max(limit, 1), 500)))
+            else:
+                rows = connection.execute("SELECT * FROM voice_artifacts ORDER BY created_at DESC LIMIT ?", (min(max(limit, 1), 500),))
+            return [self._decode_voice_artifact(row) for row in rows]
+
+    @staticmethod
+    def _decode_voice_artifact(row) -> dict:
+        result = dict(row); result["generation_metadata"] = json.loads(result.pop("generation_json"))
+        result["parameters"] = json.loads(result.pop("parameters_json")); result["favorite"] = bool(result["favorite"])
+        result["latency_seconds"] = result.pop("latency"); result["file_size_bytes"] = result.pop("file_size")
+        if not result["voice_style"]:
+            result["voice_style"] = result["generation_metadata"].get("voice_style", "")
+        if not result["latency_seconds"]:
+            result["latency_seconds"] = result["generation_metadata"].get("latency_seconds", 0)
+        return result
+
+    def set_voice_artifact_favorite(self, artifact_id: str, favorite: bool) -> None:
+        with self.transaction() as connection:
+            cursor = connection.execute("UPDATE voice_artifacts SET favorite=? WHERE artifact_id=?", (int(favorite), artifact_id))
+            if cursor.rowcount != 1: raise KeyError(artifact_id)
+
+    def delete_voice_artifact(self, artifact_id: str) -> dict:
+        with self.transaction() as connection:
+            row = connection.execute("SELECT * FROM voice_artifacts WHERE artifact_id=?", (artifact_id,)).fetchone()
+            if not row: raise KeyError(artifact_id)
+            connection.execute("DELETE FROM voice_artifacts WHERE artifact_id=?", (artifact_id,))
+            return self._decode_voice_artifact(row)
+
+    def list_pronunciation_rules(self, character_id: str = "shion") -> list[dict]:
+        with closing(self.connect()) as connection:
+            return [dict(row) for row in connection.execute(
+                "SELECT * FROM pronunciation_rules WHERE character_id=? ORDER BY priority DESC,created_at,rule_id", (character_id,))]
+
+    def create_pronunciation_rule(self, payload: dict) -> dict:
+        original, replacement = str(payload.get("original_text", "")).strip(), str(payload.get("replacement", "")).strip()
+        character_id = str(payload.get("character_id", "shion")); priority = int(payload.get("priority", 100))
+        if not original or not replacement or len(original) > 200 or len(replacement) > 200: raise ValueError("invalid pronunciation rule")
+        if not character_id.isascii() or not 1 <= len(character_id) <= 64 or not -1000 <= priority <= 1000: raise ValueError("invalid pronunciation scope")
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds"); rule_id = str(uuid.uuid4())
+        with self.transaction() as connection:
+            connection.execute("INSERT INTO pronunciation_rules(rule_id,original_text,replacement,enabled,character_id,priority,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
+                               (rule_id, original, replacement, int(bool(payload.get("enabled", True))), character_id, priority, now, now))
+            row = connection.execute("SELECT * FROM pronunciation_rules WHERE rule_id=?", (rule_id,)).fetchone()
+        return dict(row)
+
+    def update_pronunciation_rule(self, rule_id: str, changes: dict) -> dict:
+        allowed = {"original_text", "replacement", "enabled", "character_id", "priority"}
+        if not changes or any(key not in allowed for key in changes): raise ValueError("invalid pronunciation update")
+        with closing(self.connect()) as connection:
+            current = connection.execute("SELECT * FROM pronunciation_rules WHERE rule_id=?", (rule_id,)).fetchone()
+        if not current: raise KeyError(rule_id)
+        payload = {**dict(current), **changes}; original = str(payload["original_text"]).strip(); replacement = str(payload["replacement"]).strip()
+        character_id = str(payload["character_id"]); priority = int(payload["priority"])
+        if not original or not replacement or len(original) > 200 or len(replacement) > 200: raise ValueError("invalid pronunciation rule")
+        if not character_id.isascii() or not 1 <= len(character_id) <= 64 or not -1000 <= priority <= 1000: raise ValueError("invalid pronunciation scope")
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        with self.transaction() as connection:
+            connection.execute("UPDATE pronunciation_rules SET original_text=?,replacement=?,enabled=?,character_id=?,priority=?,updated_at=? WHERE rule_id=?",
+                               (original, replacement, int(bool(payload["enabled"])), character_id, priority, now, rule_id))
+            row = connection.execute("SELECT * FROM pronunciation_rules WHERE rule_id=?", (rule_id,)).fetchone()
+        return dict(row)
+
+    def delete_pronunciation_rule(self, rule_id: str) -> None:
+        with self.transaction() as connection:
+            cursor = connection.execute("DELETE FROM pronunciation_rules WHERE rule_id=?", (rule_id,))
+            if cursor.rowcount != 1: raise KeyError(rule_id)
+
+    def apply_pronunciation(self, text: str, character_id: str = "shion") -> str:
+        value = text
+        for rule in self.list_pronunciation_rules(character_id):
+            if rule["enabled"]:
+                value = value.replace(rule["original_text"], rule["replacement"])
+        return value
 
     def integrity_status(self) -> dict:
         with closing(self.connect()) as connection:
             result = connection.execute("PRAGMA quick_check").fetchone()[0]
             counts = {table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-                      for table in ("sessions", "messages", "voice_artifacts", "memories")}
+                      for table in ("sessions", "messages", "voice_artifacts", "pronunciation_rules", "memories")}
             return {"state": "OK" if result == "ok" else "ERROR", "schema_version": SCHEMA_VERSION, "counts": counts}
 
     @staticmethod
