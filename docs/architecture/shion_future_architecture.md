@@ -200,6 +200,13 @@ This is an architecture extension point only. Phase 1 adds no executable,
 background agent, global hook, screen capture, UI Automation, clipboard monitor,
 startup task or Windows permission request.
 
+Phase H now implements the first executable Windows Companion strictly within
+that extension point. It is a separate loopback frontend with an Owner-initiated
+conversation panel, native tray, and `CharacterRenderer` boundary. It adds no
+capture broker or observation permission: screen, window-title, selection,
+clipboard, microphone, filesystem, browser-history, automation and passive
+Memory access remain unimplemented. See `shion_desktop_companion.md`.
+
 Network stages are intentionally separate:
 
 1. Current: localhost (`127.0.0.1`) only.

@@ -270,7 +270,10 @@ class ConversationRepository:
             session = connection.execute("SELECT * FROM sessions WHERE session_id=?", (session_id,)).fetchone()
             if session is None: raise KeyError(session_id)
             messages = []
-            for row in connection.execute("SELECT * FROM messages WHERE session_id=? ORDER BY created_at,message_id", (session_id,)):
+            for row in connection.execute(
+                "SELECT * FROM messages WHERE session_id=? ORDER BY created_at,CASE role WHEN 'user' THEN 0 ELSE 1 END,message_id",
+                (session_id,),
+            ):
                 item = dict(row)
                 item["parts"] = [json.loads(part["payload_json"]) for part in connection.execute(
                     "SELECT payload_json FROM message_parts WHERE message_id=? ORDER BY ordinal", (row["message_id"],))]

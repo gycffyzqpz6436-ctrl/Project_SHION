@@ -315,18 +315,20 @@ grant the Conversation Model direct device or tool control.
 
 ### Future — Desktop SHION Companion
 
-After the Dashboard, Conversation, Voice and Character contracts are stable,
-evaluate a separate Windows-resident Companion client. Candidate surface:
+Phase H provides a separate Windows-resident Companion client after the
+Dashboard, Conversation, Voice and Character contracts became stable. Initial
+surface:
 
 - always-on-top official 2D Avatar window;
 - Mini Chat and Nene Voice;
-- local notifications;
+- native system tray and explicit Web launch;
 - explicit SHION Dashboard launch;
 - replaceable renderer boundary for a later 3D Avatar.
 
-This client is distinct from the Dashboard's Web Floating Assistant. Only the
-Conversation, Voice and Character backends may be shared; window lifecycle,
-presentation state, permissions and capture behavior remain client-owned.
+This client is distinct from the Dashboard's Web Floating Assistant. It shares
+the existing Conversation, Memory, Voice, Character and GPU gate backends;
+window lifecycle and presentation state remain client-owned. Live2D/3D and
+notifications remain future Owner Gates.
 
 Active application, window title, screen capture and selected-text access each
 require an independent Owner permission and default to OFF. Implementation must

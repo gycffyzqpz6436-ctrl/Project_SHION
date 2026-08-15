@@ -70,6 +70,16 @@ class ConversationRepositoryTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 repository.rename_session("s1", "   ", "2026-01-02T00:00:01Z")
 
+    def test_same_timestamp_turn_loads_user_before_assistant(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = ConversationRepository(Path(temporary) / "chat.db", enabled=True); repository.migrate()
+            session = {"session_id":"s1","title":"Turn","created_at":"x","updated_at":"2026-01-01T00:00:01Z","conversation_mode":"neutral"}
+            repository.create_session(session)
+            repository.save_turn(session,
+                {"message_id":"z-user","session_id":"s1","role":"user","created_at":"2026-01-01T00:00:01Z","parts":[{"type":"text","text":"question"}]},
+                {"message_id":"a-assistant","session_id":"s1","parent_id":"z-user","role":"assistant","created_at":"2026-01-01T00:00:01Z","parts":[{"type":"text","text":"answer"}]})
+            self.assertEqual([item["role"] for item in repository.load_session("s1")["messages"]], ["user", "assistant"])
+
     def test_incompatible_schema_stops_migration_without_rewriting_version(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "chat.db"

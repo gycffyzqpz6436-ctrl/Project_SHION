@@ -1,5 +1,28 @@
 # Project SHION Owner Startup / Shutdown Runbook
 
+## Desktop SHION Companion (Phase H)
+
+Start SHION Core normally, then start the lightweight Companion:
+
+```powershell
+Set-Location 'C:\Users\PC\Documents\ChatGPT\Project_SHION\official-main'
+.\Start-SHION.ps1 -NoBrowser
+.\Start-SHION-Companion.ps1
+```
+
+Click SHION to open the compact panel. Drag the character to move it. The tray
+menu provides Show, Hide, Open SHION Web, Always on Top, Start with Windows and
+Exit. Start with Windows is OFF until explicitly enabled by the Owner. Exit
+stops only the Companion and never terminates SHION Core.
+
+If Core is offline, SHION remains visible in OFFLINE state. Use Retry after Core
+is restored, or press Start SHION for the existing guarded launcher. The
+Companion never starts Core silently and never loads Heretic or Voice itself.
+Settings are private runtime data under
+`D:\AI\Project_SHION\desktop_companion\settings.json`; do not commit them.
+
+Architecture and privacy boundary: [Desktop Companion Phase H](../architecture/shion_desktop_companion.md).
+
 最終実機確認日: 2026-08-13
 
 このRunbookはOwnerの日常利用向けです。コマンドは、次の現在の実装と実配置を監査して確認したものだけを記載しています。
