@@ -503,6 +503,55 @@ Subsystems can be replaced without rebuilding SHION as a whole. New capabilities
 
 ---
 
+## DD-018
+
+Title
+
+Gemma 4 Conversation Base Selection Closure
+
+Status
+
+Accepted
+
+Date
+
+2026-08-21
+
+Context
+
+Project SHION completed repeated distribution-security, runtime, Japanese free
+conversation, and Owner-manual quality reviews across official and third-party
+Mistral, Nemo, Qwen, and Gemma derivatives. Continuing open-ended model discovery
+would defer SHION-specific dataset and adapter work without resolving a current
+product blocker.
+
+Decision
+
+- Conversation Base Model Selection is CLOSED for the current SHION development
+  program.
+- Official `google/gemma-4-12b-it` at pinned revision
+  `707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7` is the training foundation for
+  `shion_sft_exp_0002`.
+- Gemma 4 12B Heretic JA v2 remains an Experimental Owner-manual low-refusal
+  comparison only. It is not an approved training foundation.
+- Previous candidate, rejected, removed, Security Review, Runtime Gate, and Owner
+  Quality Gate records remain immutable audit history. Rejection does not erase a
+  valid security result, and a security/runtime pass does not reverse an Owner
+  quality rejection.
+- Experiment 0001 remains historical evidence: its Ministral 3 8B two-step Smoke
+  passed, but it is not silently converted into Experiment 0002.
+- Reopening base-model discovery requires a new explicit Owner decision and must
+  not occur as an incidental implementation task.
+
+Consequences
+
+Current work moves to Gemma 4 tokenizer/mask/module validation, bounded QLoRA
+Smoke, fixed evaluation, and SHION-specific quality review. RTX 5070 12 GB
+feasibility is an unresolved Runtime Gate, not a reason to substitute a different
+base without Owner approval. No Full Training is authorized by this decision.
+
+---
+
 # Future Decisions
 
-Add new entries using sequential IDs. The next available identifier is `DD-018`.
+Add new entries using sequential IDs. The next available identifier is `DD-019`.

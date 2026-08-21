@@ -4,6 +4,8 @@ Status: Owner-approved architecture memo
 
 Recorded: 2026-08-10
 
+Current-state review: 2026-08-21
+
 This document owns **what Project SHION plans to build, in what order, and with
 which approval gates**. The implementation boundaries and security model are
 owned by [SHION Future Architecture](../architecture/shion_future_architecture.md).
@@ -45,8 +47,8 @@ Conversation Model must not require rebuilding the other subsystems.
 
 ### 1. Conversation and SHION personality
 
-The current priority is conversation quality, with the Gemma 4 family as the
-working conversation foundation. The development flow remains:
+The current priority is conversation quality, with the Gemma 4 12B family as the
+selected conversation foundation. The development flow remains:
 
 ```text
 Canonical SHION
@@ -62,9 +64,15 @@ only when it is appropriate or requested. Evaluation must detect generic assista
 closings, unnecessary AI self-introduction, gratuitous lists or advice, unnatural
 length, and repeated closing patterns.
 
-Conversation-model exploration is considered complete for the current development
-cycle. This is a direction for continued Gemma 4 evaluation and SHION training,
-not an irreversible ban on future model review.
+**Conversation Base Model Selection: CLOSED.** The Official Gemma 4 12B IT model
+is the training foundation for SHION SFT / QLoRA Experiment 0002. Gemma 4 12B
+Heretic JA v2 remains an Experimental Owner-manual comparison model only; it is
+not the training foundation. Older Mistral-, Nemo-, Qwen-, and other experimental
+results remain audit history and are not active base-model candidates.
+
+Reopening base-model exploration requires a separate Owner decision. Ordinary
+development must not restart model hunting merely because another derivative is
+published.
 
 ### 2. Memory and knowledge
 
@@ -118,10 +126,14 @@ Natural request
   -> conversation timeline
 ```
 
-The existing Stable Diffusion installation will be audited before integration to
-identify whether it uses AUTOMATIC1111, Forge, ComfyUI, Diffusers, or another
-runtime. Integration must use a `StableDiffusionAdapter` behind the tool interface,
-not a direct dependency from `ShionRuntime`.
+The Owner PC's existing Stable Diffusion installation will be audited before
+integration. The audit must identify installation path, frontend/backend
+(AUTOMATIC1111, Forge, ComfyUI, Diffusers, or other), Python environment, CUDA and
+PyTorch versions, model/checkpoint inventory, VAE, LoRA, ControlNet, IP-Adapter,
+API availability, ports, output paths, storage policy, licenses, and runtime
+stability. Integration must use a `StableDiffusionAdapter` behind the tool
+interface, not a direct dependency from `ShionRuntime`. This roadmap does not
+authorize changing that installation.
 
 Image output belongs in the normal conversation timeline. Follow-up messages such
 as “もう少し笑って”, “その服のまま座って”, or “背景だけ夜にして” should
@@ -252,20 +264,25 @@ into one transparent pool.
 
 ### Phase 1 — Conversation Quality
 
-- continue Gemma 4 comparison and select the approved training foundation;
-- train and evaluate SHION LoRA using Owner-approved data;
+- keep base-model selection closed with Official Gemma 4 12B IT as the approved
+  Experiment 0002 training foundation;
+- complete the Experiment 0002 static, tokenizer, assistant-loss, target-module,
+  runtime and longest-record Smoke gates;
+- only after a separate Owner approval, train and evaluate SHION LoRA using the
+  200 Owner-approved Golden records;
 - improve Japanese naturalness, personality continuity, and assistant-bias gates;
 - keep fixed evaluation and Owner manual review as separate gates.
 
-Exit criterion: the Owner accepts a conversation model/configuration as the next
-SHION development baseline. Training authorization remains separate.
+Exit criterion: the Owner accepts an Experiment 0002 configuration and Smoke
+result as safe to proceed. Full Training authorization remains separate.
 
 ### Phase 2 — Core Chat UX
 
-- persistent conversation and session design;
-- explicit export;
-- regenerate, edit, branch, deletion, and search semantics;
-- retention/privacy review and migration tests.
+- preserve the implemented persistent SQLite conversation/session foundation;
+- finish explicit Markdown, plain-text, and JSONL export;
+- complete edit, regenerate, branch/version, deletion, and search semantics;
+- add image and tool-result timeline parts without breaking text history;
+- maintain retention/privacy review and migration tests.
 
 Exit criterion: sessions can be managed and exported without accidental
 persistence, cross-session leakage, or automatic dataset/Git writes.
@@ -303,12 +320,21 @@ Remaining gates are automatic promotion, vector/embedding retrieval, sensitive-c
 Exit criterion: memory and knowledge can be retrieved intentionally without
 confusing chat history, fabricated memory, or unreviewed persistent data.
 
+Crawler integration remains a separate provenance-aware ingestion service. It
+must not write directly to approved Memory, Golden Dataset, or model weights.
+
 ### Phase 6 — Multimodal Companion
 
-- integrate bounded speech-to-text and text-to-speech;
-- evaluate a SHION voice model;
+- continue bounded speech-to-text and the implemented local text-to-speech
+  service behind independent runtime controls;
+- preserve the Owner-approved Nene V3 / Bright SHION Default Voice while keeping
+  model files and generated audio outside Git;
 - implement Presentation Controller and Live2D state mapping;
 - coordinate multimodal lifecycle and future multi-GPU placement.
+
+Mobile use remains a presentation/access client of the same authenticated local
+contracts; it must not create a second storage or model-authority path. Network
+exposure, Tailscale changes, and public access remain separate Owner gates.
 
 Exit criterion: voice and presentation can be disabled independently and cannot
 grant the Conversation Model direct device or tool control.
@@ -349,8 +375,24 @@ model. This roadmap item does not authorize implementation in Phase 1.
 - Roadmap status changes, model adoption, network exposure, and persistent-data
   activation require explicit documented decisions.
 
+## Current implementation checkpoint (2026-08-21)
+
+The formal repository currently contains the runtime/orchestrator/model boundary,
+allowlisted local model loading, persistent SQLite conversation history, response
+versioning and self-correction, reviewed long-term Memory controls, Voice service
+integration with an Owner-approved Nene default, official 2D assets, Web UI, and
+the first Desktop Companion. Image generation, Vision, crawler ingestion,
+Live2D, and a general knowledge service remain unintegrated or disabled. Local STT
+work visible only as an uncommitted working-tree change is not a released formal
+capability.
+
+The detailed evidence and Experiment 0002 readiness assessment are recorded in
+[Current State Audit — 2026-08-21](../development/current_state_20260821.md) and
+[Experiment 0002 Preparation](../../training/reports/shion_sft_exp_0002_gemma4_preparation.md).
+
 ## Out of scope for this documentation change
 
-This memo does not implement memory, crawler access, image generation, vision,
-voice, Live2D, persistent history, network exposure, or training. It does not
-modify runtime configuration, model weights, datasets, evaluation, or the Web UI.
+This memo does not start training, enable image generation, Vision, crawler
+access, Live2D, or network exposure. It does not modify runtime configuration,
+model weights, datasets, evaluation artifacts, private conversations, or the Web
+UI.
