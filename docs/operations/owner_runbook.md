@@ -632,6 +632,21 @@ Neneモデル、ZIP、LICENSE、READMEは有償かつ再配布禁止です。Git
 | Hugging Face由来model | revision/license/取得可否を確認できるなら再取得可能。ただし時間節約のためprivate backupは任意 |
 | Voice artifacts | TTSを再実行可能だが、exact artifact identityを残したい場合はbackup対象 |
 
+## Experiment 0002 training operations
+
+Experiment 0002 uses a separate Owner-manual flow documented in
+`training/RUNBOOK.md`. Normal SHION Chat startup does not start training.
+
+Before the five-step Launch Gate, stop Chat/Voice and all other GPU-heavy
+applications, check `Get-PSDrive D` and `nvidia-smi`, then use the exact `launch`
+command in that Runbook. Launch is permanently limited to five optimizer steps.
+Full Training is a visibly different `full` subcommand and refuses without
+`--owner-approved-full-training`.
+
+For overnight Full Training, Owner must manually manage sleep, Windows Update
+restart risk, AC power, cooling, and competing GPU applications. Project SHION
+does not change OS power or update policy.
+
 ## 13. Quick Reference
 
 ### Quick Start

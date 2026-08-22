@@ -1,0 +1,61 @@
+experiment_id: shion_sft_exp_0002
+model_id: google/gemma-4-12b-it
+model_revision: 707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7
+model_path: D:/AI/Project_SHION/models/experimental/gemma-4-12b-it
+training_data: training/data/generated/shion_sft_exp_0001.jsonl
+training_data_sha256: 3111b8e1358692434c3f1b7db0e6376bbb6eee28d709c61a8b6e4e4674da4b9f
+output_root: D:/AI/Project_SHION/training_output/shion_sft_exp_0002
+seed: 3407
+max_sequence_length: 512
+assistant_only_loss: true
+packing: false
+local_files_only: true
+trust_remote_code: false
+
+quantization:
+  type: nf4
+  double_quantization: true
+  compute_dtype: bfloat16
+
+precision:
+  policy: gemma4_norm_fp32_tied_embedding_bf16
+  helper: training.scripts.kbit_precision.prepare_gemma4_for_kbit_training_precision_aware
+
+lora:
+  rank: 8
+  alpha: 16
+  dropout: 0.10
+  bias: none
+  target_modules_regex: '^model\.layers\.\d+\.self_attn\.(q_proj|k_proj|v_proj|o_proj)$'
+  expected_target_count: 184
+
+training:
+  learning_rate: 0.00005
+  epochs: 3
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8
+  effective_batch_size: 8
+  optimizer: paged_adamw_8bit
+  scheduler: cosine
+  warmup_ratio: 0.10
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  gradient_checkpointing: true
+  gradient_checkpointing_use_reentrant: false
+  use_cache: false
+  bf16: true
+  fp16: false
+  tf32: true
+  attention_implementation: sdpa
+  save_strategy: epoch
+  save_total_limit: 3
+  logging_steps: 1
+
+guards:
+  launch_max_optimizer_steps: 5
+  expected_record_count: 200
+  expected_max_tokens: 290
+  minimum_free_disk_gib_launch: 5
+  minimum_free_disk_gib_full: 20
+  maximum_preflight_gpu_used_mib: 1536
+  minimum_preflight_gpu_free_mib: 10240

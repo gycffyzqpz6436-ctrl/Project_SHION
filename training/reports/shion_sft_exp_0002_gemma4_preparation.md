@@ -102,7 +102,7 @@ Initial hyperparameter candidate, subject to Smoke review:
 - LoRA rank 8, alpha 16, dropout 0.10; attention projections only
 - learning rate `5e-5`, three epochs, gradient accumulation 8
 - paged AdamW 8-bit, cosine schedule, warmup 0.10
-- max sequence length 1024, packing off, gradient checkpointing on,
+- max sequence length 512 (all 200 records retain zero truncation), packing off, gradient checkpointing on,
   `use_cache=False`, SDPA
 - epoch checkpoints; seed 3407
 
@@ -140,20 +140,16 @@ Japanese naturalness, generic-assistant tendency, semantic conversation gate,
 phrase/repetition tendency, safety hard gate, technical correctness, and long
 context continuity. Baseline and long evaluation remain Owner-manual GPU tasks.
 
-## Open blockers before Full Training
+## Owner-manual gate before Full Training
 
-- A production Gemma-specific Full Training config is not yet approved.
-- Physical VRAM headroom is only about 307 MiB at the observed Gate peak and is
-  not safe for an unqualified Full Training recommendation.
-- WDDM oversubscription and measured step time imply an estimated 14–18 hour run;
-  Owner must decide whether to accept that risk or authorize a separate bounded
-  memory/runtime mitigation experiment.
-- Reducing only `max_sequence_length` from 1,024 to 512 has been tested and is not
-  a useful memory mitigation for the current dynamically sized records.
-- Text-only loading is compatible and materially faster, but saves only about
-  39–47 MiB of Torch-resident model/adapter memory and does not provide a safe
-  physical VRAM margin.
-- Experiment 0002 Full Training is not Owner-approved.
+- The production candidate config is now
+  `training/configs/shion_sft_exp_0002_gemma4.yaml`.
+- Precision-aware preparation produced about 2,236 MiB of bounded physical
+  headroom and a GO recommendation, but gradient norm remains an Owner review
+  item.
+- The five-step Owner-manual Launch Gate and offline reload must pass before the
+  Owner separately approves Full Training.
+- Full Training remains unapproved and cannot start without its explicit flag.
 - Baseline artifact completion for Experiment 0001 was not evidenced in the
   repository and must not be assumed.
 - Full Training command, output path, recovery policy, expected time, and stop
