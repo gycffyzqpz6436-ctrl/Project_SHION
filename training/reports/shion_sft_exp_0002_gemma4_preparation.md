@@ -22,6 +22,12 @@ directly loaded the same unchanged checkpoint through
 remained only 328 MiB and WDDM spill persisted. Text-only is now the preferred
 technical path, while Full Training remains NO-GO pending another Owner decision.
 
+The subsequent
+[Memory Profiling Gate](shion_sft_exp_0002_gemma4_memory_profile.md) identified
+the NF4/BF16 base payload and PEFT's blanket non-4-bit BF16-to-FP32 preparation
+as the dominant persistent allocations. It recommends one precision-aware k-bit
+preparation Gate next; no optimization or Full Training was performed.
+
 ## Fixed scope
 
 - Experiment ID: `shion_sft_exp_0002`
