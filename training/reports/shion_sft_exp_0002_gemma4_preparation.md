@@ -1,6 +1,6 @@
 # SHION SFT / QLoRA Experiment 0002 — Gemma 4 Preparation
 
-Status: **TEXT-ONLY PASS WITH CAUTION; FULL TRAINING NO-GO**
+Status: **PRECISION-AWARE PASS WITH CAUTION; FULL TRAINING RECOMMENDATION GO — OWNER APPROVAL REQUIRED**
 
 Reviewed: 2026-08-21
 
@@ -27,6 +27,13 @@ The subsequent
 the NF4/BF16 base payload and PEFT's blanket non-4-bit BF16-to-FP32 preparation
 as the dominant persistent allocations. It recommends one precision-aware k-bit
 preparation Gate next; no optimization or Full Training was performed.
+
+The bounded
+[Precision-Aware k-bit Preparation Gate](shion_sft_exp_0002_gemma4_precision_gate.md)
+then retained FP32 norms while preserving the tied embedding/lm-head in BF16.
+It reduced physical peak by 1,883 MiB, provided 2,236 MiB headroom, passed
+numerical and adapter reload checks, and changes the recommendation to GO. Full
+Training remains prohibited until the Owner explicitly approves it.
 
 ## Fixed scope
 
