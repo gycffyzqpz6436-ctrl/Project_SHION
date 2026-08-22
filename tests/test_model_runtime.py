@@ -43,6 +43,11 @@ class RepetitionGuardTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "overrides are prohibited"):
             resolve_fixed_adapter(spec, Path("client-supplied"), Path("base"))
 
+    def test_missing_required_adapter_fails_instead_of_falling_back_to_base(self):
+        spec = {"fixed_adapter": {"local_path": "Z:/definitely-missing-shion-adapter"}}
+        with self.assertRaisesRegex(ValueError, "fixed adapter artifact is missing"):
+            resolve_fixed_adapter(spec, None, Path("base"))
+
     def test_public_model_metadata_does_not_disclose_fixed_adapter_path(self):
         registry = ModelRegistry.from_file(ROOT / "app" / "model_registry.json")
         public = next(item for item in registry.public_models()

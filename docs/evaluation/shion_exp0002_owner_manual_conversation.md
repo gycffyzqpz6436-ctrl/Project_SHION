@@ -46,10 +46,21 @@ existing canonical SHION prompt and has not been altered for this evaluation.
 
 ## Suggested manual checks
 
-Use ordinary, ambiguous, emotional, teasing, and longer multi-turn Japanese
-conversation. Compare continuity, naturalness, SHION identity, verbosity,
-repetition, refusals, and instruction following against `gemma4_12b_it_manual`.
-Do not treat a successful runtime load as a quality pass.
+Use the same prompt first with `gemma4_12b_it_manual`, then with
+`shion_gemma4_exp0002_manual`. Check:
+
+- natural Japanese and casual conversation;
+- appropriate use of the 「お兄さん」 address;
+- SHION-like light teasing and kindness;
+- assistant bias and persona retention during technical questions;
+- excessive roleplay or invented context;
+- apparent memorization of Golden text;
+- repetition and foreign-language contamination.
+
+Small starting set: `おはよ`, `今日仕事疲れた〜`, `ちょっと甘やかして`,
+`今日何もしなかった`, `Windowsでポート3000使ってるプロセス確認したい`,
+and `応用情報の勉強だるい`. Do not treat a successful runtime load as a
+quality pass.
 
 To switch models, wait until generation has stopped and use the allowlisted model
 selector. Model switching retains the existing unload, GC/CUDA-cache cleanup, and
