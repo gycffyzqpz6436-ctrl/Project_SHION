@@ -1,4 +1,5 @@
 import json
+import re
 import unittest
 from pathlib import Path
 from threading import Lock
@@ -15,6 +16,8 @@ from app.runtime.model_runtime import (
     effective_generation_limit,
     extract_visible_response,
     generation_eos_token_ids,
+    MODEL_LOADERS,
+    architecture_load_overrides,
 )
 from app.runtime.generation_policy import AdaptiveOutputBudget, RecentTurnContextStrategy, SelfCorrectionPolicy
 from app.runtime.fixed_adapter import resolve_fixed_adapter, validate_loaded_adapter
@@ -35,8 +38,32 @@ class RepetitionGuardTests(unittest.TestCase):
         self.assertEqual((fixed["record_count"], fixed["epochs"]), (200, 3))
         self.assertEqual((fixed["rank"], fixed["alpha"], fixed["dropout"]), (8, 16, 0.1))
         self.assertEqual(spec["recommended_mode"], "neutral")
+        self.assertEqual(spec["model_class"], "Gemma4UnifiedForCausalLM")
+        self.assertEqual(MODEL_LOADERS[spec["model_class"]].__name__, "Gemma4UnifiedForCausalLM")
+        self.assertEqual(registry["gemma4_12b_it_manual"]["model_class"], "AutoModelForMultimodalLM")
+        self.assertEqual(registry["gemma4_12b_heretic_ja_v2_manual"]["model_class"], "AutoModelForMultimodalLM")
         self.assertEqual(spec["generation_overrides"], registry["gemma4_12b_it_manual"]["generation_overrides"])
         self.assertEqual(spec["chat_template_options"], {"enable_thinking": False})
+
+    def test_shion_text_only_loader_matches_training_checkpoint_mapping(self):
+        text_config = object()
+        config = Mock(text_config=text_config)
+        self.assertEqual(
+            architecture_load_overrides("Gemma4UnifiedForCausalLM", config),
+            {"config": text_config, "key_mapping": {r"^model\.language_model\.": "model."}},
+        )
+        self.assertEqual(architecture_load_overrides("AutoModelForMultimodalLM", config), {})
+
+    def test_final_adapter_contains_184_compatible_text_only_targets(self):
+        adapter = Path("D:/AI/Project_SHION/training_output/shion_sft_exp_0002/full_training/run-20260822-221100/final_adapter/adapter_model.safetensors")
+        if not adapter.is_file():
+            self.skipTest("Owner final adapter is not present")
+        from safetensors import safe_open
+        with safe_open(adapter, framework="pt", device="cpu") as weights:
+            modules = {name.rsplit(".lora_", 1)[0] for name in weights.keys()}
+        pattern = re.compile(r"^base_model\.model\.model\.layers\.\d+\.self_attn\.(q_proj|k_proj|v_proj|o_proj)$")
+        self.assertEqual(len(modules), 184)
+        self.assertTrue(all(pattern.fullmatch(name) for name in modules))
 
     def test_fixed_adapter_rejects_any_client_override_before_loading(self):
         spec = {"fixed_adapter": {"local_path": "server-owned"}}

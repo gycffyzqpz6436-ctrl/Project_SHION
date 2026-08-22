@@ -6,10 +6,12 @@ Gate: static integration only; no model load, generation, evaluation, or trainin
 ## Result
 
 The completed Experiment 0002 final adapter is exposed through the server-side
-allowlisted alias `shion_gemma4_exp0002_manual`. The alias preserves the Official
-Gemma 4 runtime class, local base, revision, non-thinking chat-template option,
-and generation policy. It adds an immutable LoRA binding; it does not merge or
-rewrite the base checkpoint.
+allowlisted alias `shion_gemma4_exp0002_manual`. The alias uses the same official
+`Gemma4UnifiedForCausalLM` text-only class as training and adapter reload, while
+preserving the Official Gemma local base, revision, non-thinking chat-template
+option, and generation policy. It adds an immutable LoRA binding; it does not
+merge or rewrite the base checkpoint. The separate Official Gemma and Heretic
+aliases remain `AutoModelForMultimodalLM` for their existing multimodal runtime.
 
 Static adapter gate: **PASS**
 

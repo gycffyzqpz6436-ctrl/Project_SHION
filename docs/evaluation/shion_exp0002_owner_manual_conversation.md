@@ -20,10 +20,12 @@ does not match the recorded provenance.
 - Dataset recorded by manifest: Golden 200
 - Training: 3 epochs, LoRA `r=8`, `alpha=16`, `dropout=0.1`, 184 q/k/v/o targets
 
-The runtime loads the existing Official Gemma 4 inference class and generation
-policy, then attaches the adapter without merging it. Missing, invalid, inactive,
-or mismatched adapters produce an explicit model-load failure; the alias never
-falls back to the Official base model.
+The runtime loads the Official Gemma checkpoint through the same
+`Gemma4UnifiedForCausalLM` text-only architecture, `config.text_config`, and
+checkpoint key mapping used by Experiment 0002 training/reload, then attaches the
+adapter without merging it. The separate Official Gemma alias remains multimodal.
+Missing, invalid, inactive, or mismatched adapters produce an explicit model-load
+failure; the SHION alias never falls back to the Official base model.
 
 ## Owner startup
 

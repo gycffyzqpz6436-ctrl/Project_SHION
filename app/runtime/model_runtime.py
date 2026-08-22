@@ -17,6 +17,7 @@ from transformers import (
     AutoModelForMultimodalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
+    Gemma4UnifiedForCausalLM,
     StoppingCriteria,
     StoppingCriteriaList,
     set_seed,
@@ -40,6 +41,22 @@ from app.runtime.fixed_adapter import resolve_fixed_adapter, validate_loaded_ada
 
 NEUTRAL_PROMPT_PATH = ROOT / "app" / "prompts" / "neutral_conversation.txt"
 SAFE_RESPONSE_FALLBACK = "応答を安全に表示できませんでした。もう一度お試しください。"
+MODEL_LOADERS = {
+    "AutoModelForImageTextToText": AutoModelForImageTextToText,
+    "AutoModelForMultimodalLM": AutoModelForMultimodalLM,
+    "AutoModelForCausalLM": AutoModelForCausalLM,
+    "Gemma4UnifiedForCausalLM": Gemma4UnifiedForCausalLM,
+}
+
+
+def architecture_load_overrides(model_class: str, config) -> dict:
+    """Return the audited checkpoint mapping required by a specific architecture."""
+    if model_class == "Gemma4UnifiedForCausalLM":
+        return {
+            "config": config.text_config,
+            "key_mapping": {r"^model\.language_model\.": "model."},
+        }
+    return {}
 
 
 def extract_visible_response(tokenizer, generated_ids) -> tuple[str, bool]:
@@ -116,9 +133,7 @@ class LocalModelRuntime:
         self.model_spec = dict(model_spec)
         if not self.model_spec.get("available"):
             raise ValueError("model is not approved for local loading")
-        if self.model_spec.get("model_class") not in {
-            "AutoModelForImageTextToText", "AutoModelForMultimodalLM", "AutoModelForCausalLM"
-        }:
+        if self.model_spec.get("model_class") not in MODEL_LOADERS:
             raise ValueError("model class is not allowlisted")
         self.model_path = Path(self.model_spec["local_path"])
         if not self.model_path.is_dir():
@@ -153,14 +168,10 @@ class LocalModelRuntime:
             bnb_4bit_use_double_quant=True,
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
-        loaders = {
-            "AutoModelForImageTextToText": AutoModelForImageTextToText,
-            "AutoModelForMultimodalLM": AutoModelForMultimodalLM,
-            "AutoModelForCausalLM": AutoModelForCausalLM,
-        }
-        loader = loaders[self.model_spec["model_class"]]
+        loader = MODEL_LOADERS[self.model_spec["model_class"]]
         self.model = loader.from_pretrained(
             self.model_path,
+            **architecture_load_overrides(self.model_spec["model_class"], config),
             local_files_only=True,
             trust_remote_code=False,
             quantization_config=quantization,
