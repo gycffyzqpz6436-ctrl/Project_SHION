@@ -60,6 +60,9 @@ training\.venv\Scripts\python.exe app\server.py --model qwen3_8b_jp_uncensored_m
 # Gemma 4 official 12B comparison candidate (Security/Runtime passed; quality not approved)
 training\.venv\Scripts\python.exe app\server.py --model gemma4_12b_it_manual
 
+# SHION Experiment 0002 fixed-adapter Owner Manual Evaluation
+training\.venv\Scripts\python.exe app\server.py --model shion_gemma4_exp0002_manual
+
 # Japanese-targeted low-refusal Gemma 4 comparison (quality not approved)
 training\.venv\Scripts\python.exe app\server.py --model gemma4_12b_heretic_ja_v2_manual
 ```

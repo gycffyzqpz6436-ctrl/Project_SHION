@@ -547,6 +547,11 @@ function renderModelInfo(data) {
   ui.badge.hidden = !/Experimental|Third-party/i.test(data.provenance || "");
   ui.monitorModel.textContent = ui.mode.options[ui.mode.selectedIndex]?.text || "Normal";
   const fields = [
+    ["Model", data.model_identity], ["Base", data.base_model_label], ["Experiment", data.experiment],
+    ["Adapter", data.adapter_status], ["LoRA targets", data.adapter_target_count],
+    ["Dataset", data.dataset_label], ["Training", data.training_epochs ? `${data.training_epochs} epochs` : null],
+    ["LoRA", data.lora_config], ["Status", data.evaluation_status],
+    ["Recommended mode", data.recommended_mode === "neutral" ? "Neutral Conversation" : data.recommended_mode],
     ["Repository", data.repo_id], ["Revision", data.revision], ["Parent", data.parent_model],
     ["Base origin:", data.base_origin || "not specified"], ["Provenance", data.provenance],
     ["Model change", data.modification_type], ["Quantization", data.quantization],
@@ -554,6 +559,7 @@ function renderModelInfo(data) {
   ];
   ui.info.replaceChildren();
   for (const [label, value] of fields) {
+    if (value === undefined || value === null || value === "") continue;
     const term = document.createElement("dt"), description = document.createElement("dd");
     term.textContent = label; description.textContent = value;
     ui.info.append(term, description);

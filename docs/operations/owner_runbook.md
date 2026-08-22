@@ -73,6 +73,25 @@ training\.venv\Scripts\python.exe app\server.py --model gemma4_12b_heretic_ja_v2
 
 `Owner Manual Test` や `Experimental` は正式SHION Base採用を意味しません。任意のmodel pathは指定できず、`app/model_registry.json` のaliasだけが使用できます。
 
+### SHION Experiment 0002 Owner Manual Conversation Evaluation
+
+学習済みSHION Adapterを固定して会話評価する場合は次を使います。これは
+Owner Manual Evaluationであり、正式採用の確定ではありません。
+
+```powershell
+cd C:\Users\PC\Documents\ChatGPT\Project_SHION\official-main
+$env:HF_HUB_OFFLINE = '1'
+$env:TRANSFORMERS_OFFLINE = '1'
+training\.venv\Scripts\python.exe app\server.py --model shion_gemma4_exp0002_manual
+```
+
+`http://127.0.0.1:8765/` を開き、Model Infoで `SHION — Gemma 4 / Experiment
+0002`、Adapter `ACTIVE`、LoRA targets `184` を確認します。最初の比較モードは
+**Neutral Conversation**を推奨します。Adapter pathはserver-side allowlistに固定され、
+Browserから指定・上書きできません。欠損・不一致時はOfficial Baseだけで継続せず
+model loadが失敗します。詳細は
+`docs/evaluation/shion_exp0002_owner_manual_conversation.md`を参照してください。
+
 ## 2. Chat Only
 
 ### Web Chat

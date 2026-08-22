@@ -36,6 +36,7 @@ from chat_local import (  # noqa: E402
     validate_generation,
 )
 from app.runtime.generation_policy import AdaptiveOutputBudget, RecentTurnContextStrategy, SelfCorrectionPolicy
+from app.runtime.fixed_adapter import resolve_fixed_adapter, validate_loaded_adapter
 
 NEUTRAL_PROMPT_PATH = ROOT / "app" / "prompts" / "neutral_conversation.txt"
 SAFE_RESPONSE_FALLBACK = "応答を安全に表示できませんでした。もう一度お試しください。"
@@ -122,10 +123,11 @@ class LocalModelRuntime:
         self.model_path = Path(self.model_spec["local_path"])
         if not self.model_path.is_dir():
             raise ValueError(f"local model directory does not exist: {self.model_path}")
+        self.fixed_adapter = resolve_fixed_adapter(self.model_spec, adapter, self.model_path)
         if adapter is not None and not self.model_spec.get("adapter_allowed"):
             raise ValueError("adapter is not approved for this model")
-        validate_adapter(adapter, self.model_path)
-        self.adapter = adapter
+        self.adapter = self.fixed_adapter.path if self.fixed_adapter else adapter
+        validate_adapter(self.adapter, self.model_path)
         self.prompt_path = Path(self.common["canonical_system_prompt"])
         self.neutral_prompt = NEUTRAL_PROMPT_PATH.read_text(encoding="utf-8").strip()
         self.generation = {**self.common["generation"], **self.model_spec.get("generation_overrides", {})}
@@ -166,17 +168,21 @@ class LocalModelRuntime:
             dtype=torch.bfloat16,
             attn_implementation="sdpa",
         )
-        if adapter is not None:
+        if self.adapter is not None:
             from peft import PeftModel
 
-            self.model = PeftModel.from_pretrained(self.model, adapter, is_trainable=False)
+            self.model = PeftModel.from_pretrained(
+                self.model, self.adapter, is_trainable=False, local_files_only=True
+            )
+            if self.fixed_adapter:
+                validate_loaded_adapter(self.model, self.fixed_adapter)
         normalize_free_chat_generation_config(self.model)
         self.model.eval()
 
     def status(self) -> dict:
         allocated = torch.cuda.memory_allocated() / 1024**2 if torch.cuda.is_available() else 0
         reserved = torch.cuda.memory_reserved() / 1024**2 if torch.cuda.is_available() else 0
-        return {
+        result = {
             "model_alias": self.alias,
             "display_name": self.model_spec["display_name"],
             "repo_id": self.model_spec["repo_id"],
@@ -194,6 +200,22 @@ class LocalModelRuntime:
             "gpu_memory_allocated_mib": round(allocated),
             "gpu_memory_reserved_mib": round(reserved),
         }
+        if self.fixed_adapter:
+            result.update({
+                "model_identity": "SHION",
+                "base_model_label": "Gemma 4 12B IT",
+                "experiment": "0002",
+                "adapter": "active",
+                "adapter_status": "ACTIVE",
+                "adapter_target_count": self.fixed_adapter.expected_target_count,
+                "dataset_label": self.fixed_adapter.dataset,
+                "training_epochs": self.fixed_adapter.epochs,
+                "lora_config": (f"r={self.fixed_adapter.rank} / alpha={self.fixed_adapter.alpha} / "
+                                f"dropout={self.fixed_adapter.dropout:g}"),
+                "evaluation_status": self.fixed_adapter.status,
+                "recommended_mode": self.model_spec.get("recommended_mode", "neutral"),
+            })
+        return result
 
     def _token_count(self, messages: list[dict]) -> int:
         rendered = self.tokenizer.apply_chat_template(

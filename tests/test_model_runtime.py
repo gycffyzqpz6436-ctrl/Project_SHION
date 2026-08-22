@@ -17,12 +17,51 @@ from app.runtime.model_runtime import (
     generation_eos_token_ids,
 )
 from app.runtime.generation_policy import AdaptiveOutputBudget, RecentTurnContextStrategy, SelfCorrectionPolicy
+from app.runtime.fixed_adapter import resolve_fixed_adapter, validate_loaded_adapter
+from app.models.registry import ModelRegistry
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class RepetitionGuardTests(unittest.TestCase):
+    def test_shion_exp0002_is_bound_to_the_fixed_server_side_adapter(self):
+        registry = json.loads((ROOT / "app" / "model_registry.json").read_text(encoding="utf-8"))
+        spec = registry["shion_gemma4_exp0002_manual"]
+        fixed = spec["fixed_adapter"]
+        self.assertFalse(spec["adapter_allowed"])
+        self.assertEqual(spec["revision"], "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7")
+        self.assertEqual(fixed["expected_target_count"], 184)
+        self.assertEqual((fixed["record_count"], fixed["epochs"]), (200, 3))
+        self.assertEqual((fixed["rank"], fixed["alpha"], fixed["dropout"]), (8, 16, 0.1))
+        self.assertEqual(spec["recommended_mode"], "neutral")
+        self.assertEqual(spec["generation_overrides"], registry["gemma4_12b_it_manual"]["generation_overrides"])
+        self.assertEqual(spec["chat_template_options"], {"enable_thinking": False})
+
+    def test_fixed_adapter_rejects_any_client_override_before_loading(self):
+        spec = {"fixed_adapter": {"local_path": "server-owned"}}
+        with self.assertRaisesRegex(ValueError, "overrides are prohibited"):
+            resolve_fixed_adapter(spec, Path("client-supplied"), Path("base"))
+
+    def test_public_model_metadata_does_not_disclose_fixed_adapter_path(self):
+        registry = ModelRegistry.from_file(ROOT / "app" / "model_registry.json")
+        public = next(item for item in registry.public_models()
+                      if item["alias"] == "shion_gemma4_exp0002_manual")
+        self.assertNotIn("fixed_adapter", public)
+        self.assertNotIn("local_path", public)
+
+    def test_loaded_adapter_must_be_active_with_exact_target_count(self):
+        binding = Mock(expected_target_count=2)
+        model = Mock(peft_config={"default": object()}, active_adapter="default")
+        model.named_modules.return_value = [
+            ("model.layers.0.self_attn.q_proj.lora_A.default", object()),
+            ("model.layers.0.self_attn.k_proj.lora_A.default", object()),
+        ]
+        validate_loaded_adapter(model, binding)
+        model.named_modules.return_value = model.named_modules.return_value[:1]
+        with self.assertRaisesRegex(ValueError, "expected 2"):
+            validate_loaded_adapter(model, binding)
+
     def test_self_correction_detects_owner_doubt_without_arithmetic_rules(self):
         policy = SelfCorrectionPolicy()
         for message in ("違う", "？", "本当？", "それ間違ってない？", "200", "再確認してください"):
