@@ -6,6 +6,8 @@ from training.scripts.gemma4_feasibility import choose_smoke_records, is_text_de
 def test_text_decoder_target_rejects_multimodal_and_non_attention_modules():
     assert is_text_decoder_target("model.language_model.layers.0.self_attn.q_proj")
     assert is_text_decoder_target("model.language_model.layers.47.self_attn.o_proj")
+    assert is_text_decoder_target("model.layers.0.self_attn.q_proj")
+    assert is_text_decoder_target("model.layers.47.self_attn.o_proj")
     assert not is_text_decoder_target("model.vision_tower.layers.0.self_attn.q_proj")
     assert not is_text_decoder_target("model.audio_tower.layers.0.self_attn.q_proj")
     assert not is_text_decoder_target("model.language_model.layers.0.mlp.up_proj")

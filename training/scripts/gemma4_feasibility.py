@@ -20,7 +20,13 @@ from typing import Any
 
 import torch
 from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
-from transformers import AutoModelForImageTextToText, AutoTokenizer, BitsAndBytesConfig
+from transformers import (
+    AutoConfig,
+    AutoModelForImageTextToText,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    Gemma4UnifiedForCausalLM,
+)
 
 from training.scripts.train_sft import tokenize_assistant_only
 
@@ -60,7 +66,7 @@ def choose_smoke_records(rows: list[dict[str, Any]], lengths: dict[str, int]) ->
 
 def is_text_decoder_target(name: str) -> bool:
     return (
-        ".language_model.layers." in name
+        (".language_model.layers." in name or name.startswith("model.layers."))
         and ".self_attn." in name
         and name.endswith(TARGET_SUFFIXES)
         and not any(part in name.lower() for part in FORBIDDEN_TARGET_PARTS)
@@ -164,6 +170,8 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--max-sequence-length", type=int, default=1024)
     parser.add_argument("--skip-adapter-save-reload", action="store_true")
+    parser.add_argument("--text-only", action="store_true")
+    parser.add_argument("--validate-generation", action="store_true")
     parser.add_argument("--owner-approved-feasibility-gate", action="store_true")
     args = parser.parse_args()
     if not args.owner_approved_feasibility_gate:
@@ -180,6 +188,7 @@ def main() -> None:
         "data": str(args.data),
         "max_sequence_length": args.max_sequence_length,
         "lora": {"rank": 8, "alpha": 16, "dropout": 0.10, "bias": "none"},
+        "text_only": args.text_only,
         "stages": {},
         "errors": [],
     }
@@ -212,18 +221,37 @@ def main() -> None:
         )
         torch.cuda.reset_peak_memory_stats()
         started = time.perf_counter()
-        model = AutoModelForImageTextToText.from_pretrained(
-            args.model_path,
-            local_files_only=True,
-            trust_remote_code=False,
-            quantization_config=quantization,
-            device_map={"": 0},
-            dtype=torch.bfloat16,
-            attn_implementation="sdpa",
-        )
+        loading_info: dict[str, Any] = {}
+        if args.text_only:
+            unified_config = AutoConfig.from_pretrained(
+                args.model_path, local_files_only=True, trust_remote_code=False
+            )
+            model, loading_info = Gemma4UnifiedForCausalLM.from_pretrained(
+                args.model_path,
+                config=unified_config.text_config,
+                local_files_only=True,
+                trust_remote_code=False,
+                key_mapping={r"^model\.language_model\.": "model."},
+                output_loading_info=True,
+                quantization_config=quantization,
+                device_map={"": 0},
+                dtype=torch.bfloat16,
+                attn_implementation="sdpa",
+            )
+        else:
+            model = AutoModelForImageTextToText.from_pretrained(
+                args.model_path,
+                local_files_only=True,
+                trust_remote_code=False,
+                quantization_config=quantization,
+                device_map={"": 0},
+                dtype=torch.bfloat16,
+                attn_implementation="sdpa",
+            )
         torch.cuda.synchronize()
         architecture = type(model).__name__
-        if architecture != EXPECTED_ARCHITECTURE:
+        expected_architecture = "Gemma4UnifiedForCausalLM" if args.text_only else EXPECTED_ARCHITECTURE
+        if architecture != expected_architecture:
             raise RuntimeError(f"unexpected architecture: {architecture}")
         targets = [name for name, _ in model.named_modules() if is_text_decoder_target(name)]
         unexpected = [name for name in targets if any(part in name.lower() for part in FORBIDDEN_TARGET_PARTS)]
@@ -235,14 +263,62 @@ def main() -> None:
             "architecture": architecture,
             "target_modules": targets,
             "target_count": len(targets),
+            "runtime_parameter_count": sum(parameter.numel() for parameter in model.parameters()),
+            "missing_keys": sorted(loading_info.get("missing_keys", [])),
+            "unexpected_keys": sorted(loading_info.get("unexpected_keys", [])),
+            "mismatched_keys": sorted(loading_info.get("mismatched_keys", [])),
             **cuda_metrics(),
             "nvidia": NvidiaMonitor.sample(),
         }
 
+        if args.validate_generation:
+            prompt_batch = tokenizer.apply_chat_template(
+                [{"role": "user", "content": "こんにちは"}],
+                tokenize=True,
+                add_generation_prompt=True,
+                return_tensors="pt",
+                return_dict=True,
+                enable_thinking=False,
+            ).to("cuda:0")
+            prompt_ids = prompt_batch["input_ids"]
+            generation_started = time.perf_counter()
+            with torch.inference_mode():
+                generated = model.generate(
+                    **prompt_batch,
+                    do_sample=False,
+                    max_new_tokens=32,
+                    eos_token_id=[1, 106, 50],
+                    pad_token_id=tokenizer.pad_token_id,
+                    use_cache=True,
+                )
+            torch.cuda.synchronize()
+            generated_ids = generated[0, prompt_ids.shape[1] :]
+            decoded = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+            leaked = any(token in decoded for token in ("<|turn>", "<turn|>", "<|channel>", "<channel|>"))
+            if not decoded or leaked:
+                raise RuntimeError(f"text-only generation validation failed: empty={not decoded}, leaked={leaked}")
+            result["stages"]["generation"] = {
+                "success": True,
+                "seconds": time.perf_counter() - generation_started,
+                "generated_tokens": int(generated_ids.numel()),
+                "ended_with_eos": int(generated_ids[-1]) in {1, 106, 50},
+                "special_token_leak": leaked,
+                "text": decoded,
+                **cuda_metrics(),
+                "nvidia": NvidiaMonitor.sample(),
+            }
+            del prompt_batch, prompt_ids, generated, generated_ids
+            gc.collect()
+            torch.cuda.empty_cache()
+
         model.config.use_cache = False
         model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
         model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
-        target_pattern = r"^model\.language_model\.layers\.\d+\.self_attn\.(q_proj|k_proj|v_proj|o_proj)$"
+        target_pattern = (
+            r"^model\.layers\.\d+\.self_attn\.(q_proj|k_proj|v_proj|o_proj)$"
+            if args.text_only
+            else r"^model\.language_model\.layers\.\d+\.self_attn\.(q_proj|k_proj|v_proj|o_proj)$"
+        )
         model = get_peft_model(
             model,
             LoraConfig(

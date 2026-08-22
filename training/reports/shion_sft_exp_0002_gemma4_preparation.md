@@ -1,6 +1,6 @@
 # SHION SFT / QLoRA Experiment 0002 — Gemma 4 Preparation
 
-Status: **FEASIBILITY PASS WITH CAUTION; MEMORY MITIGATION FAIL; FULL TRAINING NO-GO**
+Status: **TEXT-ONLY PASS WITH CAUTION; FULL TRAINING NO-GO**
 
 Reviewed: 2026-08-21
 
@@ -14,6 +14,13 @@ A subsequent one-variable 512-token
 preserved all 200 records but did not change actual dynamic tensor lengths,
 physical peak, WDDM spill, or runtime enough to improve feasibility. Its decision
 is FAIL / Full Training NO-GO.
+
+The official Transformers
+[Text-Only Training Gate](shion_sft_exp_0002_gemma4_text_only_gate.md) then
+directly loaded the same unchanged checkpoint through
+`Gemma4UnifiedForCausalLM`. Runtime improved substantially, but physical margin
+remained only 328 MiB and WDDM spill persisted. Text-only is now the preferred
+technical path, while Full Training remains NO-GO pending another Owner decision.
 
 ## Fixed scope
 
@@ -130,6 +137,9 @@ context continuity. Baseline and long evaluation remain Owner-manual GPU tasks.
   memory/runtime mitigation experiment.
 - Reducing only `max_sequence_length` from 1,024 to 512 has been tested and is not
   a useful memory mitigation for the current dynamically sized records.
+- Text-only loading is compatible and materially faster, but saves only about
+  39–47 MiB of Torch-resident model/adapter memory and does not provide a safe
+  physical VRAM margin.
 - Experiment 0002 Full Training is not Owner-approved.
 - Baseline artifact completion for Experiment 0001 was not evidenced in the
   repository and must not be assumed.
