@@ -162,6 +162,8 @@ def main() -> None:
     parser.add_argument("--model-path", type=Path, required=True)
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--max-sequence-length", type=int, default=1024)
+    parser.add_argument("--skip-adapter-save-reload", action="store_true")
     parser.add_argument("--owner-approved-feasibility-gate", action="store_true")
     args = parser.parse_args()
     if not args.owner_approved_feasibility_gate:
@@ -176,13 +178,13 @@ def main() -> None:
         "status": "FAIL",
         "model_path": str(args.model_path),
         "data": str(args.data),
-        "max_sequence_length": 1024,
+        "max_sequence_length": args.max_sequence_length,
         "lora": {"rank": 8, "alpha": 16, "dropout": 0.10, "bias": "none"},
         "stages": {},
         "errors": [],
     }
     monitor = NvidiaMonitor()
-    model = optimizer = tokenizer = reloaded = base = None
+    model = optimizer = tokenizer = reloaded = base = output = pair_losses = None
     monitor.start()
     result["before"] = {**monitor.samples[0], **cuda_metrics()}
     try:
@@ -190,7 +192,10 @@ def main() -> None:
             args.model_path, local_files_only=True, trust_remote_code=False
         )
         rows = load_jsonl(args.data)
-        encoded = {row["id"]: tokenize_assistant_only(tokenizer, row["messages"], 1024) for row in rows}
+        encoded = {
+            row["id"]: tokenize_assistant_only(tokenizer, row["messages"], args.max_sequence_length)
+            for row in rows
+        }
         lengths = {record_id: len(value["input_ids"]) for record_id, value in encoded.items()}
         longest = max(rows, key=lambda row: (lengths[row["id"]], row["id"]))
         smoke_rows = choose_smoke_records(rows, lengths)
@@ -267,7 +272,9 @@ def main() -> None:
         device = torch.device("cuda:0")
 
         torch.cuda.reset_peak_memory_stats()
-        loss, seconds, gradient_exists = run_step(model, optimizer, make_batch(tokenizer, longest, 1024, device))
+        loss, seconds, gradient_exists = run_step(
+            model, optimizer, make_batch(tokenizer, longest, args.max_sequence_length, device)
+        )
         result["stages"]["longest_step"] = {
             "success": True,
             "loss": loss,
@@ -285,7 +292,7 @@ def main() -> None:
             started = time.perf_counter()
             pair_losses: list[torch.Tensor] = []
             for row in (first, second):
-                output = model(**make_batch(tokenizer, row, 1024, device))
+                output = model(**make_batch(tokenizer, row, args.max_sequence_length, device))
                 if not torch.isfinite(output.loss):
                     raise RuntimeError(f"non-finite smoke loss for {row['id']}")
                 (output.loss / 2).backward()
@@ -303,6 +310,14 @@ def main() -> None:
             **cuda_metrics(),
             "nvidia": NvidiaMonitor.sample(),
         }
+
+        if args.skip_adapter_save_reload:
+            result["stages"]["adapter_save_reload"] = {
+                "skipped": True,
+                "reason": "not required by bounded memory/runtime comparison",
+            }
+            result["status"] = "PASS"
+            return
 
         model.save_pretrained(adapter_dir, safe_serialization=True)
         adapter_files = [
@@ -348,7 +363,7 @@ def main() -> None:
         raise
     finally:
         try:
-            del optimizer, model, reloaded, base, tokenizer
+            del optimizer, model, reloaded, base, tokenizer, output, pair_losses
         except Exception:
             pass
         gc.collect()

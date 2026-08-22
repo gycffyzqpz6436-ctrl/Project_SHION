@@ -1,6 +1,6 @@
 # SHION SFT / QLoRA Experiment 0002 — Gemma 4 Preparation
 
-Status: **FEASIBILITY PASS WITH CAUTION; FULL TRAINING NOT AUTHORIZED**
+Status: **FEASIBILITY PASS WITH CAUTION; MEMORY MITIGATION FAIL; FULL TRAINING NO-GO**
 
 Reviewed: 2026-08-21
 
@@ -8,6 +8,12 @@ The bounded RTX 5070 Runtime/Smoke Gate was completed on 2026-08-22. Functional
 steps and adapter reload passed, but physical VRAM peaked at 11,920 of 12,227 MiB
 and performance showed WDDM oversubscription. See the
 [Training Feasibility Gate report](shion_sft_exp_0002_gemma4_feasibility.md).
+
+A subsequent one-variable 512-token
+[Memory / Runtime Mitigation Gate](shion_sft_exp_0002_gemma4_memory_gate.md)
+preserved all 200 records but did not change actual dynamic tensor lengths,
+physical peak, WDDM spill, or runtime enough to improve feasibility. Its decision
+is FAIL / Full Training NO-GO.
 
 ## Fixed scope
 
@@ -122,6 +128,8 @@ context continuity. Baseline and long evaluation remain Owner-manual GPU tasks.
 - WDDM oversubscription and measured step time imply an estimated 14–18 hour run;
   Owner must decide whether to accept that risk or authorize a separate bounded
   memory/runtime mitigation experiment.
+- Reducing only `max_sequence_length` from 1,024 to 512 has been tested and is not
+  a useful memory mitigation for the current dynamically sized records.
 - Experiment 0002 Full Training is not Owner-approved.
 - Baseline artifact completion for Experiment 0001 was not evidenced in the
   repository and must not be assumed.
